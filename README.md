@@ -1,10 +1,11 @@
 # PRAMAAN
 
-PRAMAAN is a Next.js application for skill verification and trusted hackathon
-team discovery. The current implementation provides profile creation,
-credential login, session-protected dashboard access, onboarding guards, and a
-MongoDB health check. Assessment, verification, and team discovery features
-are not implemented yet.
+PRAMAAN is a Next.js prototype for skill verification and trusted hackathon
+team discovery. The current demo opens directly into the product experience
+and demonstrates profile evidence, MCQ assessment, verification status,
+deterministic teammate matching, candidate challenge, and team acceptance.
+The original Auth.js signup/login implementation remains in the repository but
+is bypassed by the judge-facing prototype flow.
 
 ## Requirements
 
@@ -63,25 +64,33 @@ is cleared so a later request can retry.
 src/
 	app/
 		page.tsx                         Home page: /
-		layout.tsx                       Root layout and metadata
+		layout.tsx                       Root layout and navigation
 		globals.css                      Global styles and Tailwind layers
-		login/page.tsx                   Signup and login forms: /login
-		onboarding/page.tsx              Incomplete-profile page: /onboarding
-		dashboard/page.tsx               Protected workspace: /dashboard
-		api/
-			auth/[...nextauth]/route.ts    Auth.js GET/POST handlers
-			health/db/route.ts             MongoDB GET health check
-	auth.config.ts                     Shared Auth.js configuration
-	auth.ts                             Auth.js Credentials provider and callbacks
-	proxy.ts                            Route protection and redirects
+		login/page.tsx                   Legacy signup/login: /login
+		onboarding/page.tsx              Prototype redirect: /onboarding
+		dashboard/page.tsx               Main dashboard: /dashboard
+		profile/page.tsx                 Evidence profile: /profile
+		skills/page.tsx                  Skill verification: /skills
+		assessments/                     Assessment list and MCQ route
+		teammates/                       Matching and candidate routes
+		challenge/[id]/                  Candidate challenge route
+		team/page.tsx                    Team management: /team
+		api/                              Assessment, challenge, team, auth, health
+	auth.config.ts                     Legacy Auth.js configuration
+	auth.ts                             Legacy Credentials provider
+	proxy.ts                            Prototype pass-through middleware
 	lib/
 		mongodb.ts                        Cached Mongoose connection
-		session.ts                        Session-user helpers
-		users.ts                          User creation, lookup, and password hashing
+		session.ts                         Legacy session helpers
+		users.ts                          Legacy user/password helpers
+		assessment.ts                     Server question bank and scoring
+		demo-data.ts                      Candidate and team demo state
+		challenge.ts                      Server challenge question bank and scoring
 	models/
-		User.ts                           Mongoose User schema and indexes
+		User.ts                           Mongoose User schema
 	types/
-		next-auth.d.ts                    Auth.js Session/JWT type extensions
+		next-auth.d.ts                    Legacy Auth.js type extensions
+components/                          Shared navigation and client interactions
 public/                               Static assets
 scripts/test-mongo.mjs                Direct MongoDB connection probe
 ```
@@ -90,12 +99,8 @@ scripts/test-mongo.mjs                Direct MongoDB connection probe
 
 ### `GET /`
 
-Renders the home page. It reads the current Auth.js session and shows:
-
-- `Sign in` for an anonymous visitor, linking to `/login`.
-- `Log in` for an anonymous visitor, linking to `/login?mode=login`.
-- `Continue` for an authenticated user, linking to `/dashboard` when the
-	profile is complete or `/onboarding` otherwise.
+Renders the public product entry screen. It does not require authentication
+and links directly to the dashboard and verified skills view.
 
 ### `GET /login`
 
@@ -121,19 +126,15 @@ message `The login details are incorrect.`.
 
 ### `GET /onboarding`
 
-Requires an authenticated session. It is intended for users whose
-`profileCompleted` value is false. The current signup flow creates completed
-profiles, so this route mainly supports existing or future incomplete-profile
-flows. Completed users are redirected to `/dashboard`; anonymous users are
-redirected to `/login`.
+Redirects to `/dashboard` in prototype mode. It remains as a compatibility
+route for the legacy authentication flow.
 
 ### `GET /dashboard`
 
-Requires an authenticated session with `profileCompleted=true`. It displays
-the session user ID, name, username, phone, email, and profile status. The
-Sign out button is a server action that ends the Auth.js session and redirects
-to `/login`.
-
+Displays the public demo dashboard with profile context, skill statuses,
+assessment activity, hackathon state, teammate entry points, and recent
+activity. It is publicly accessible so judges can open the product without
+signup.
 ## API Routes
 
 ### `GET /api/health/db`
@@ -220,8 +221,9 @@ When extending this project:
 	password hashes to client components.
 - Reuse `connectToDatabase()` from `src/lib/mongodb.ts`; do not create a new
 	connection per request.
-- Reuse `auth`, `signIn`, and `signOut` from `src/auth.ts` for Auth.js work.
-- Use `requireSessionUser()` for pages that need an authenticated user.
+- The judge-facing prototype does not require authentication; keep legacy Auth.js
+	code isolated unless the product direction changes.
+- Keep question answers and challenge answers in server-only helpers.
 - Add route handlers under `src/app/api/**/route.ts` and export explicit HTTP
 	methods such as `GET` or `POST`.
 - Update `src/types/next-auth.d.ts` whenever adding fields to the session or
@@ -232,8 +234,11 @@ When extending this project:
 
 ## Current Limitations
 
-- Email verification is represented in the model but not implemented.
-- Google sign-in is disabled.
-- Onboarding does not yet update profile data.
-- Skill assessments, verification, and team discovery are placeholders.
+- Assessment, challenge, and team state use HTTP-only demo cookies plus
+	server-memory question records; they are not durable MongoDB records yet.
+- Demo data is intentionally deterministic and does not represent real users.
+- Email verification, Google sign-in, and password authentication are legacy
+	code paths and are bypassed by the prototype entry flow.
+- MongoDB remains available for future persistence but is not required for the
+	judge-facing dashboard and demo journey.
 - There are no automated tests in the current package scripts.

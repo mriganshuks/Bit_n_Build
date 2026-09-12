@@ -1,19 +1,39 @@
 import Link from "next/link";
+import { getSkillStatuses, type VerificationStatus } from "@/lib/assessment";
+import { getTeamState } from "@/lib/demo-data";
+import { cookies } from "next/headers";
+
+export const dynamic = "force-dynamic";
 
 const demoProfile = {
   name: "Rajveer Singh",
   role: "Full Stack Developer",
   bio: "Computer science student focused on building reliable web applications and solving algorithmic problems.",
-  skills: [
-    { name: "C++", status: "Verified", score: "92%" },
-    { name: "DSA", status: "Verified", score: "88%" },
-    { name: "React", status: "Verified", score: "82%" },
-    { name: "Next.js", status: "Partially verified", score: "68%" },
-    { name: "Python", status: "Claimed", score: "Assessment pending" },
-  ],
 };
 
-export default function DashboardPage() {
+function readableStatus(status: VerificationStatus) {
+  return status === "partially_verified"
+    ? "Partially verified"
+    : status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+export default async function DashboardPage() {
+  const cookieStore = await cookies();
+  const javascriptPercentage = Number(
+    cookieStore.get("pramaan_javascript_percentage")?.value
+  );
+  const javascriptStatus = cookieStore.get("pramaan_javascript_status")?.value;
+  const skills = getSkillStatuses(
+    javascriptPercentage >= 0 && javascriptStatus
+      ? {
+          percentage: javascriptPercentage,
+          status: javascriptStatus as Exclude<VerificationStatus, "claimed">,
+        }
+      : undefined
+  );
+  const team = getTeamState(cookieStore.has("pramaan_aman_accepted"));
+  const verifiedCount = skills.filter((skill) => skill.status === "verified").length;
+  const pendingCount = skills.filter((skill) => skill.status === "claimed").length;
 
   return (
     <main className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-6 py-10">
@@ -60,11 +80,13 @@ export default function DashboardPage() {
               Skills
             </h2>
           </div>
-          <span className="text-sm text-stone-500">3 verified · 1 pending</span>
+          <span className="text-sm text-stone-500">
+            {verifiedCount} verified · {pendingCount} pending
+          </span>
         </div>
 
         <div className="mt-6 divide-y divide-stone-200 border-y border-stone-200">
-          {demoProfile.skills.map((skill) => (
+          {skills.map((skill) => (
             <div
               key={skill.name}
               className="grid gap-2 py-4 sm:grid-cols-[1fr_auto_auto] sm:items-center sm:gap-6"
@@ -72,7 +94,7 @@ export default function DashboardPage() {
               <p className="font-medium text-stone-900">{skill.name}</p>
               <p className="text-sm text-stone-600">{skill.score}</p>
               <p className="text-sm font-medium text-stone-700">
-                {skill.status}
+                {readableStatus(skill.status)}
               </p>
             </div>
           ))}
@@ -106,9 +128,11 @@ export default function DashboardPage() {
             Innovate India 2026
           </h2>
           <p className="mt-3 text-sm leading-6 text-stone-600">
-            BuildX · 3 / 4 members confirmed
+            {team.name} · {team.members.length} / 4 members confirmed
           </p>
-          <p className="mt-1 text-sm text-stone-600">Need: AI / ML</p>
+          <p className="mt-1 text-sm text-stone-600">
+            Need: {team.requiredSkills.join(" · ")}
+          </p>
           <Link
             href="/teammates"
             className="mt-5 inline-flex text-sm font-medium text-stone-900 underline underline-offset-4"
@@ -116,6 +140,19 @@ export default function DashboardPage() {
             Find complementary teammates
           </Link>
         </div>
+      </section>
+
+      <section className="mt-12 border-t border-stone-300 pt-8">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">
+          Recent activity
+        </p>
+        <ul className="mt-4 grid gap-3 text-sm text-stone-700 sm:grid-cols-3">
+          <li className="border-l-2 border-stone-400 pl-3">JavaScript assessment completed</li>
+          <li className="border-l-2 border-stone-400 pl-3">Skill verification updated</li>
+          <li className="border-l-2 border-stone-400 pl-3">
+            {team.members.length === 4 ? "Aman accepted to BuildX" : "Aman invited to BuildX"}
+          </li>
+        </ul>
       </section>
     </main>
   );

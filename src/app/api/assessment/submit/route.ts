@@ -1,4 +1,5 @@
 import { evaluateAssessment, toSafeResult } from "@/lib/assessment";
+import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
   try {
@@ -24,7 +25,18 @@ export async function POST(request: Request) {
       body.answers as Record<string, number>
     );
 
-    return Response.json(toSafeResult(result));
+    const response = NextResponse.json(toSafeResult(result));
+    response.cookies.set("pramaan_javascript_percentage", String(result.percentage), {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+    });
+    response.cookies.set("pramaan_javascript_status", result.status ?? "not_verified", {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+    });
+    return response;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to submit assessment.";
     const status = message.includes("not found")

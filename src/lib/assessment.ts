@@ -9,6 +9,18 @@ type AssessmentQuestion = {
 
 type PublicQuestion = Omit<AssessmentQuestion, "correctAnswer">;
 
+export type VerificationStatus =
+  | "verified"
+  | "partially_verified"
+  | "not_verified"
+  | "claimed";
+
+export type SkillStatus = {
+  name: string;
+  score: string;
+  status: VerificationStatus;
+};
+
 type AssessmentRecord = {
   id: string;
   skill: string;
@@ -16,7 +28,7 @@ type AssessmentRecord = {
   answers?: Record<string, number>;
   score?: number;
   percentage?: number;
-  status?: "verified" | "partially_verified" | "not_verified";
+  status?: Exclude<VerificationStatus, "claimed">;
   completedAt?: string;
 };
 
@@ -66,6 +78,57 @@ const questionBank: Record<string, AssessmentQuestion[]> = {
 };
 
 const assessments = new Map<string, AssessmentRecord>();
+const latestSkillResults = new Map<
+  string,
+  { percentage: number; status: Exclude<VerificationStatus, "claimed"> }
+>();
+
+const demoSkills: SkillStatus[] = [
+  { name: "C++", score: "92%", status: "verified" },
+  { name: "DSA", score: "88%", status: "verified" },
+  { name: "React", score: "82%", status: "verified" },
+  { name: "Next.js", score: "68%", status: "partially_verified" },
+  { name: "Python", score: "Assessment pending", status: "claimed" },
+  { name: "JavaScript", score: "Assessment pending", status: "claimed" },
+];
+
+export function getVerificationStatus(
+  percentage: number
+): Exclude<VerificationStatus, "claimed"> {
+  if (percentage >= 80) {
+    return "verified";
+  }
+
+  if (percentage >= 60) {
+    return "partially_verified";
+  }
+
+  return "not_verified";
+}
+
+export function getSkillStatuses(
+  latestJavascriptResult?: {
+    percentage: number;
+    status: Exclude<VerificationStatus, "claimed">;
+  }
+): SkillStatus[] {
+  return demoSkills.map((skill) => {
+    const latestResult =
+      latestJavascriptResult && normalizeSkill(skill.name) === "javascript"
+        ? latestJavascriptResult
+        : latestSkillResults.get(normalizeSkill(skill.name));
+
+    if (!latestResult) {
+      return { ...skill };
+    }
+
+    return {
+      ...skill,
+      score: `${latestResult.percentage}%`,
+      status: latestResult.status,
+    };
+  });
+}
 
 export function normalizeSkill(skill: string) {
   return skill.trim().toLowerCase();
@@ -140,18 +203,14 @@ export function evaluateAssessment(
     0
   );
   const percentage = Math.round((score / assessment.questions.length) * 100);
-  const status =
-    percentage >= 80
-      ? "verified"
-      : percentage >= 60
-        ? "partially_verified"
-        : "not_verified";
+  const status = getVerificationStatus(percentage);
 
   assessment.answers = answers;
   assessment.score = score;
   assessment.percentage = percentage;
   assessment.status = status;
   assessment.completedAt = new Date().toISOString();
+  latestSkillResults.set(assessment.skill, { percentage, status });
 
   return assessment;
 }
