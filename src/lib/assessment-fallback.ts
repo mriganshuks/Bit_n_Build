@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import type { CodingProblem, Difficulty, MCQQuestion, PublicMCQQuestion } from "@/lib/assessment-types";
 
 export const FALLBACK_MCQ: MCQQuestion[] = [
@@ -78,5 +79,12 @@ export function publicFallbackQuestions(count = 8): PublicMCQQuestion[] {
 }
 
 export function fallbackQuestionSet(count = 8, difficulty: Difficulty = "intermediate") {
-  return FALLBACK_MCQ.slice(0, count).map((question) => ({ ...question, difficulty }));
+  const available = FALLBACK_MCQ.map((question) => ({ ...question, difficulty }));
+
+  for (let index = available.length - 1; index > 0; index -= 1) {
+    const swapIndex = randomInt(index + 1);
+    [available[index], available[swapIndex]] = [available[swapIndex], available[index]];
+  }
+
+  return available.slice(0, Math.min(count, available.length));
 }

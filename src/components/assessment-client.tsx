@@ -31,6 +31,7 @@ export default function AssessmentClient({ skill }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const signalCooldownRef = useRef<Record<string, number>>({});
 
   const currentQuestion = attempt?.questions[index];
@@ -70,6 +71,10 @@ export default function AssessmentClient({ skill }: Props) {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error("This browser does not provide camera and microphone access.");
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => undefined);
+      }
       setCameraActive(stream.getVideoTracks().some((track) => track.readyState === "live"));
       setMicrophoneActive(stream.getAudioTracks().some((track) => track.readyState === "live"));
       stream.getVideoTracks().forEach((track) => { track.onended = () => void sendSignal("CAMERA_DISABLED", "HIGH"); });
@@ -90,6 +95,7 @@ export default function AssessmentClient({ skill }: Props) {
     } catch (startError) {
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
+      if (videoRef.current) videoRef.current.srcObject = null;
       setConsent("notice");
       setError(startError instanceof Error ? startError.message : "Camera and microphone permission are required.");
     }
@@ -108,6 +114,7 @@ export default function AssessmentClient({ skill }: Props) {
       if (!response.ok || !data.result) throw new Error(data.error?.message ?? "Unable to submit the assessment.");
       setResult(data.result);
       streamRef.current?.getTracks().forEach((track) => track.stop());
+      if (videoRef.current) videoRef.current.srcObject = null;
       if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen().catch(() => undefined);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Unable to submit the assessment.");
@@ -208,6 +215,10 @@ export default function AssessmentClient({ skill }: Props) {
         <div><p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">PRAMAAN assessment</p><h1 className="mt-2 text-2xl font-semibold text-stone-900">{skillLabel}</h1></div>
         <div className="grid grid-cols-3 gap-4 text-right text-xs text-stone-600"><span>Time<br /><strong className="text-base text-stone-900">{timeLabel}</strong></span><span>Camera<br /><strong className="text-stone-900">{cameraActive ? "Active" : "Unavailable"}</strong></span><span>Mic<br /><strong className="text-stone-900">{microphoneActive ? "Active" : "Unavailable"}</strong></span></div>
       </header>
+      <div className="mt-4 flex items-center gap-3 border border-stone-300 bg-stone-100 p-3 text-xs text-stone-600">
+        <video ref={videoRef} muted playsInline className="h-16 w-24 bg-stone-900 object-cover" aria-label="Assessment camera preview" />
+        <span>Camera preview is visible while integrity monitoring is active. This prototype records stream availability and browser signals; it does not identify people or classify physical gadget use.</span>
+      </div>
       {attempt.notice && <p className="mt-4 border border-stone-300 bg-stone-100 px-4 py-3 text-sm text-stone-700">{attempt.notice}</p>}
       {notice && <p className="mt-4 border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">Integrity notice: {notice}</p>}
       <div className="mt-6 flex gap-2 border-b border-stone-200 pb-3 text-sm"><button type="button" onClick={() => setRound("mcq")} className={round === "mcq" ? "border-b-2 border-stone-900 pb-2 font-medium" : "pb-2 text-stone-500"}>MCQ round · {answeredCount}/{attempt.questions.length}</button><button type="button" onClick={() => setRound("coding")} className={round === "coding" ? "border-b-2 border-stone-900 pb-2 font-medium" : "pb-2 text-stone-500"}>Coding round · JavaScript</button></div>
