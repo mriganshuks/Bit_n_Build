@@ -16,7 +16,7 @@ const demoProfile = {
 export default function DashboardPage() {
 
   return (
-    <main className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-6 py-10">
+    <main className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-6 py-10">
       <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">
         PRAMAAN dashboard
       </p>
@@ -92,7 +92,7 @@ export default function DashboardPage() {
             evidence that teammates can trust.
           </p>
           <Link
-            href="/assessment/javascript"
+            href="/assessments"
             className="mt-5 inline-flex h-10 items-center border border-stone-900 px-4 text-sm font-medium text-stone-900 hover:bg-stone-100"
           >
             Take JavaScript assessment
