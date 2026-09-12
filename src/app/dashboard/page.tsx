@@ -23,6 +23,8 @@ export default async function DashboardPage() {
     cookieStore.get("pramaan_javascript_percentage")?.value
   );
   const javascriptStatus = cookieStore.get("pramaan_javascript_status")?.value;
+  const integrityScore = cookieStore.get("pramaan_assessment_integrity")?.value;
+  const riskLevel = cookieStore.get("pramaan_assessment_risk")?.value;
   const skills = getSkillStatuses(
     javascriptPercentage >= 0 && javascriptStatus
       ? {
@@ -154,6 +156,21 @@ export default async function DashboardPage() {
           </li>
         </ul>
       </section>
+
+      {integrityScore && riskLevel && (
+        <section className="mt-12 border-t border-stone-300 pt-8">
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">
+            Latest assessment integrity
+          </p>
+          <div className="mt-3 flex flex-wrap items-baseline gap-4">
+            <p className="text-2xl font-semibold text-stone-900">{integrityScore} / 100</p>
+            <p className="text-sm font-medium text-stone-700">{riskLevel.replaceAll("_", " ")}</p>
+          </div>
+          <p className="mt-2 text-sm text-stone-600">
+            Integrity signals are reviewed separately from skill performance.
+          </p>
+        </section>
+      )}
     </main>
   );
 }

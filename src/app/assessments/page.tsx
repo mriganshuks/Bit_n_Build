@@ -15,7 +15,7 @@ export default function AssessmentsPage() {
       </p>
       <div className="mt-10 border-y border-stone-200 py-5">
         <p className="font-medium text-stone-900">JavaScript assessment</p>
-        <p className="mt-1 text-sm text-stone-600">5 questions · server-scored</p>
+        <p className="mt-1 text-sm text-stone-600">8 MCQs · timed coding draft · integrity signals</p>
         <Link
           href="/assessments/javascript"
           className="mt-4 inline-flex h-10 items-center border border-stone-900 px-4 text-sm font-medium text-stone-900 hover:bg-stone-100"
