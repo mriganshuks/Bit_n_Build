@@ -1,15 +1,15 @@
-import { addIntegrityEvents } from "@/lib/assessment-engine";
+import { z } from "zod";
+import { connectToDatabase } from "@/lib/mongodb";
+import { errorResponse, readJson } from "@/lib/api";
+import { requireCurrentProfileId } from "@/lib/profile-context";
+import { integrityEventsSchema } from "@/lib/assessment-integrity";
+import { recordAssessmentIntegrity } from "@/lib/assessment-service";
 
+const schema = z.object({ assessmentId: z.string().min(1), events: integrityEventsSchema });
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { assessmentId?: unknown; events?: unknown };
-    if (typeof body.assessmentId !== "string" || !Array.isArray(body.events)) {
-      return Response.json({ success: false, error: { code: "INVALID_INPUT", message: "Assessment ID and events are required." } }, { status: 400 });
-    }
-    const result = addIntegrityEvents(body.assessmentId, body.events as Parameters<typeof addIntegrityEvents>[1]);
-    return Response.json({ success: true, ...result }, { status: result.cancelled ? 409 : 200 });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to record integrity signals.";
-    return Response.json({ success: false, error: { code: "INTEGRITY_ERROR", message } }, { status: 400 });
-  }
+    await connectToDatabase();
+    const input = schema.parse(await readJson(request));
+    return Response.json({ integrity: await recordAssessmentIntegrity({ profileId: await requireCurrentProfileId(), attemptId: input.assessmentId, events: input.events }) });
+  } catch (error) { return errorResponse(error); }
 }

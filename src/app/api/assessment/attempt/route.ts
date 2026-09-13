@@ -1,11 +1,13 @@
-import { getAttempt } from "@/lib/assessment-engine";
-import { cookies } from "next/headers";
+import { connectToDatabase } from "@/lib/mongodb";
+import { ApiError, errorResponse } from "@/lib/api";
+import { requireCurrentProfileId } from "@/lib/profile-context";
+import { getAssessmentAttempt } from "@/lib/assessment-service";
 
-export async function GET() {
-  const cookieStore = await cookies();
-  const id = cookieStore.get("pramaan_assessment_attempt")?.value;
-  if (!id) return Response.json({ success: false, error: { code: "NO_ATTEMPT", message: "No active assessment attempt." } }, { status: 404 });
-  const attempt = getAttempt(id);
-  if (!attempt) return Response.json({ success: false, error: { code: "NOT_FOUND", message: "Assessment attempt not found." } }, { status: 404 });
-  return Response.json({ success: true, attempt });
+export async function GET(request: Request) {
+  try {
+    await connectToDatabase();
+    const id = new URL(request.url).searchParams.get("id");
+    if (!id) throw new ApiError("An assessment ID is required.", 400, "ASSESSMENT_ID_REQUIRED");
+    return Response.json({ attempt: await getAssessmentAttempt(await requireCurrentProfileId(), id) });
+  } catch (error) { return errorResponse(error); }
 }

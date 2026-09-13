@@ -1,23 +1,8 @@
-import { getAttempt } from "@/lib/assessment-engine";
+import { connectToDatabase } from "@/lib/mongodb";
+import { errorResponse } from "@/lib/api";
+import { requireCurrentProfileId } from "@/lib/profile-context";
+import { getAssessmentResult } from "@/lib/assessment-service";
 
-type ResultRouteContext = {
-  params: Promise<{ id: string }>;
-};
-
-export async function GET(
-  _request: Request,
-  { params }: ResultRouteContext
-) {
-  const { id } = await params;
-  const assessment = getAttempt(id);
-
-  if (!assessment) {
-    return Response.json({ success: false, error: { code: "NOT_FOUND", message: "Assessment not found." } }, { status: 404 });
-  }
-
-  if (!assessment.result) {
-    return Response.json({ success: false, error: { code: "NOT_COMPLETE", message: "This assessment has not been completed." } }, { status: 400 });
-  }
-
-  return Response.json({ success: true, result: assessment.result });
+export async function GET(_request: Request, context: RouteContext<"/api/assessment/result/[id]">) {
+  try { await connectToDatabase(); const { id } = await context.params; return Response.json({ result: await getAssessmentResult(await requireCurrentProfileId(), id) }); } catch (error) { return errorResponse(error); }
 }

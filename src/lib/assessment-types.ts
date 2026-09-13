@@ -1,87 +1,43 @@
-export const ASSESSMENT_DURATION_SECONDS = 8 * 60;
-export const CODING_DURATION_SECONDS = 20 * 60;
-
-export type AssessmentState =
-  | "NOT_STARTED"
-  | "READY"
-  | "IN_PROGRESS"
-  | "SUBMITTED"
-  | "EXPIRED"
-  | "EVALUATED"
-  | "FAILED"
-  | "ERROR";
+export const ASSESSMENT_DURATION_SECONDS = 28 * 60;
+export const CHALLENGE_DURATION_SECONDS = 12 * 60;
 
 export type Difficulty = "beginner" | "intermediate" | "advanced";
-export type AssessmentStatus = "verified" | "partially_verified" | "not_verified";
-export type RiskLevel = "CLEAN" | "LOW_RISK" | "MEDIUM_RISK" | "HIGH_RISK";
-export type IntegritySeverity = "LOW" | "MEDIUM" | "HIGH";
-
-export type AssessmentOption = { id: "A" | "B" | "C" | "D"; text: string };
-
-export type MCQQuestion = {
+export type OptionId = "A" | "B" | "C" | "D";
+export type AssessmentOption = { id: OptionId; text: string };
+export type AssessmentQuestion = {
   id: string;
-  type: "mcq";
-  skill: string;
-  difficulty: Difficulty;
-  question: string;
-  options: [AssessmentOption, AssessmentOption, AssessmentOption, AssessmentOption];
-  correctOption: AssessmentOption["id"];
-  explanation: string;
+  prompt: string;
   topic: string;
+  options: AssessmentOption[];
+  correctOption: OptionId;
+  explanation: string;
+  fingerprint: string;
 };
-
-export type PublicMCQQuestion = Omit<MCQQuestion, "correctOption" | "explanation">;
-
+export type PublicQuestion = Omit<AssessmentQuestion, "correctOption" | "explanation" | "fingerprint">;
 export type CodingProblem = {
   id: string;
-  type: "coding";
-  skill: string;
-  difficulty: Difficulty;
   title: string;
   statement: string;
-  input: string;
-  output: string;
   constraints: string[];
   examples: Array<{ input: string; output: string }>;
+  starterCode: string;
   language: "javascript";
+  hiddenTests: Array<{ input: unknown; expected: unknown }>;
 };
-
+export type PublicCodingProblem = Omit<CodingProblem, "hiddenTests">;
+export type RiskLevel = "LOW" | "MEDIUM" | "HIGH";
+export type VerificationStatus = "CLAIMED" | "PARTIALLY_VERIFIED" | "VERIFIED";
 export type IntegrityEventType =
   | "TAB_HIDDEN"
   | "WINDOW_BLUR"
+  | "WINDOW_FOCUS"
   | "FULLSCREEN_EXIT"
-  | "COPY_ATTEMPT"
-  | "PASTE_ATTEMPT"
-  | "CONTEXT_MENU"
   | "CAMERA_DISABLED"
   | "MICROPHONE_DISABLED"
-  | "CAMERA_UNAVAILABLE"
-  | "MIC_UNAVAILABLE"
-  | "DEVTOOLS_SIGNAL"
+  | "CAMERA_PERMISSION_LOST"
+  | "MICROPHONE_PERMISSION_LOST"
+  | "COPY_ATTEMPT"
+  | "PASTE_ATTEMPT"
   | "NETWORK_DISCONNECT"
-  | "ASSESSMENT_TIMEOUT";
-
-export type IntegrityEvent = {
-  type: IntegrityEventType;
-  severity: IntegritySeverity;
-  timestamp: string;
-  durationMs?: number;
-  metadata?: Record<string, string | number | boolean>;
-};
-
-export type AssessmentResult = {
-  assessmentId: string;
-  skill: string;
-  state: AssessmentState;
-  mcqScore: number;
-  mcqTotal: number;
-  mcqPercentage: number;
-  codingScore: number | null;
-  integrityScore: number;
-  riskLevel: RiskLevel;
-  verificationStatus: AssessmentStatus;
-  completedAt: string | null;
-  signals: IntegrityEvent[];
-  violationCount: number;
-  cancellationReason?: string;
-};
+  | "REPEATED_SUBMISSION";
+export type IntegritySeverity = "LOW" | "MEDIUM" | "HIGH";
