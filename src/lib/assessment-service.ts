@@ -33,12 +33,19 @@ export async function createAssessmentAttempt(input: { profileId: string; skill:
   const profileId = objectId(input.profileId);
   const profile = await User.findById(profileId).select("_id").lean();
   if (!profile) throw new ApiError("Create a profile before starting an assessment.", 404, "PROFILE_NOT_FOUND");
+  const now = new Date();
+  await AssessmentAttempt.updateMany(
+    { profileId, state: "IN_PROGRESS", expiresAt: { $lte: now } },
+    { $set: { state: "TIMED_OUT", submittedAt: now } }
+  );
+  const activeAttempt = await AssessmentAttempt.exists({ profileId, state: "IN_PROGRESS", expiresAt: { $gt: now } });
+  if (activeAttempt) throw new ApiError("Finish or resume your active assessment before starting another one.", 409, "ACTIVE_ASSESSMENT_EXISTS");
   const skill = input.skill.trim().replace(/\s+/g, " ");
   if (skill.length < 2 || skill.length > 80) throw new ApiError("Choose a valid skill.", 400, "INVALID_SKILL");
   const prior = await AssessmentAttempt.find({ profileId, skill: new RegExp(`^${skill.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") }).select("questions.fingerprint").sort({ createdAt: -1 }).limit(5).lean();
   const previousFingerprints = prior.flatMap((attempt) => attempt.questions.map((question) => question.fingerprint));
   const generated = await generateAssessment({ skill, difficulty: input.difficulty, count: 5, previousFingerprints });
-  const startedAt = new Date();
+  const startedAt = now;
   const expiresAt = new Date(startedAt.getTime() + ASSESSMENT_DURATION_SECONDS * 1000);
   const attempt = await AssessmentAttempt.create({ profileId, skill, difficulty: input.difficulty, state: "IN_PROGRESS", startedAt, expiresAt, questions: generated.questions, codingProblem: generated.codingProblem, generatedBy: generated.generatedBy, generationNotice: generated.notice });
   return publicAttempt(attempt);
@@ -66,7 +73,7 @@ export async function submitAssessmentAttempt(input: { profileId: string; attemp
   const attempt = await AssessmentAttempt.findOneAndUpdate(
     { _id: attemptId, profileId: profileObjectId, state: "IN_PROGRESS" },
     { $set: { state: "EVALUATING", submittedAt: new Date() } },
-    { new: true }
+    { returnDocument: "after" }
   ).select("+questions.correctOption +questions.explanation");
   if (!attempt) {
     const existing = await AssessmentAttempt.findOne({ _id: attemptId, profileId: profileObjectId }).lean();
@@ -74,7 +81,9 @@ export async function submitAssessmentAttempt(input: { profileId: string; attemp
     throw new ApiError("This assessment was already submitted or is being evaluated.", 409, "DUPLICATE_SUBMISSION");
   }
   const expired = Date.now() > attempt.expiresAt.getTime();
-  const acceptedAnswers = expired && !input.timeout ? {} : input.answers;
+  // The deadline is authoritative. A client must never be able to preserve
+  // answers merely by claiming that this was an automatic timeout submission.
+  const acceptedAnswers = expired ? {} : input.answers;
   const mcq = scoreMcq(acceptedAnswers, attempt.questions);
   const events = await IntegrityEvent.find({ targetId: attemptId }).lean();
   const integrity = integritySummary(events as Array<{ type: IntegrityEventType; severity: string }>);

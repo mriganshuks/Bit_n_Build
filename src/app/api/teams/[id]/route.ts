@@ -1,7 +1,8 @@
 import { connectToDatabase } from "@/lib/mongodb";
 import { errorResponse } from "@/lib/api";
+import { requireCurrentProfileId } from "@/lib/profile-context";
 import { getTeam } from "@/lib/team-service";
 
-export async function GET(_request: Request, context: RouteContext<"/api/teams/[id]">) {
-  try { await connectToDatabase(); const { id } = await context.params; return Response.json({ team: await getTeam(id) }); } catch (error) { return errorResponse(error); }
+export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+  try { await connectToDatabase(); const { id } = await context.params; return Response.json({ team: await getTeam(id, await requireCurrentProfileId()) }); } catch (error) { return errorResponse(error); }
 }

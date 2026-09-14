@@ -47,7 +47,7 @@ export async function getOwnProfile(profileId: string) {
 }
 
 export async function updateOwnProfile(profileId: string, input: z.infer<typeof profilePatchSchema>) {
-  const profile = await User.findByIdAndUpdate(validId(profileId), { $set: input }, { new: true, runValidators: true }).lean();
+  const profile = await User.findByIdAndUpdate(validId(profileId), { $set: input }, { returnDocument: "after", runValidators: true }).lean();
   if (!profile) throw new ApiError("Profile not found.", 404, "PROFILE_NOT_FOUND");
   return serializeProfile(profile);
 }
@@ -66,7 +66,6 @@ export async function removeSkill(profileId: string, name: string) {
   const profile = await User.findById(validId(profileId));
   if (!profile) throw new ApiError("Profile not found.", 404, "PROFILE_NOT_FOUND");
   const normalizedName = name.trim().toLowerCase();
-  const before = profile.skills.length;
   const removeIndex = profile.skills.findIndex((skill) => skill.normalizedName === normalizedName);
   if (removeIndex < 0) throw new ApiError("Skill not found.", 404, "SKILL_NOT_FOUND");
   profile.skills.splice(removeIndex, 1);
@@ -99,6 +98,6 @@ export async function addEvidence(profileId: string, input: z.infer<typeof evide
 export async function publicProfile(profileId: string) {
   const profile = await User.findById(validId(profileId)).lean();
   if (!profile) throw new ApiError("Candidate not found.", 404, "PROFILE_NOT_FOUND");
-  const { email: _email, ...safe } = serializeProfile(profile);
-  return safe;
+  const serialized = serializeProfile(profile);
+  return { id: serialized.id, displayName: serialized.displayName, handle: serialized.handle, headline: serialized.headline, bio: serialized.bio, location: serialized.location, education: serialized.education, availableForTeams: serialized.availableForTeams, skills: serialized.skills, projects: serialized.projects, evidence: serialized.evidence };
 }

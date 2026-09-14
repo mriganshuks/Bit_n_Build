@@ -1,10 +1,2 @@
 import ChallengeClient from "@/components/challenge-client";
-
-type ChallengePageProps = {
-  params: Promise<{ id: string }>;
-};
-
-export default async function ChallengePage({ params }: ChallengePageProps) {
-  const { id } = await params;
-  return <ChallengeClient candidateId={id} />;
-}
+export default async function ChallengePage({ params }: { params: Promise<{ id: string }> }) { const { id } = await params; return <ChallengeClient id={id} />; }

@@ -6,8 +6,7 @@ export function publicQuestions(questions: unknown): PublicQuestion[] {
 }
 
 export function publicCodingProblem(problem: CodingProblem): PublicCodingProblem {
-  const { hiddenTests: _hiddenTests, ...publicProblem } = problem;
-  return publicProblem;
+  return { id: problem.id, title: problem.title, statement: problem.statement, constraints: problem.constraints, examples: problem.examples, starterCode: problem.starterCode, language: problem.language };
 }
 
 export function serializeProfile(profile: {

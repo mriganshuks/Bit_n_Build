@@ -9,7 +9,7 @@ import { User } from "@/models/User";
 import { ApiError, isDuplicateKeyError } from "@/lib/api";
 import { generateAssessment } from "@/lib/assessment-generation";
 import { integritySummary, scoreMcq } from "@/lib/assessment-scoring";
-import { publicQuestions, serializeProfile } from "@/lib/serializers";
+import { publicQuestions } from "@/lib/serializers";
 import { CHALLENGE_DURATION_SECONDS, type IntegrityEventType } from "@/lib/assessment-types";
 
 const skillName = z.string().trim().min(2).max(80);
@@ -43,7 +43,7 @@ export async function createHackathon(profileId: string, input: z.infer<typeof h
   return { id: hackathon._id.toString(), name: hackathon.name };
 }
 export async function joinHackathon(profileId: string, hackathonId: string) {
-  const hackathon = await Hackathon.findByIdAndUpdate(objectId(hackathonId, "hackathon"), { $addToSet: { participantIds: objectId(profileId, "profile") } }, { new: true });
+  const hackathon = await Hackathon.findByIdAndUpdate(objectId(hackathonId, "hackathon"), { $addToSet: { participantIds: objectId(profileId, "profile") } }, { returnDocument: "after" });
   if (!hackathon) throw new ApiError("Hackathon not found.", 404, "HACKATHON_NOT_FOUND");
   return { id: hackathon._id.toString(), joined: true };
 }
@@ -76,9 +76,10 @@ export async function listMyTeams(profileId: string) {
   const names = new Map(hackathons.map((hackathon) => [hackathon._id.toString(), hackathon.name]));
   return teams.map((team) => ({ ...serializeTeam(team), hackathonName: names.get(team.hackathonId.toString()) ?? "Hackathon" }));
 }
-export async function getTeam(teamId: string) {
+export async function getTeam(teamId: string, requesterId: string) {
   const team = await Team.findById(objectId(teamId, "team")).lean();
   if (!team) throw new ApiError("Team not found.", 404, "TEAM_NOT_FOUND");
+  if (!team.members.some((member) => member.profileId.toString() === requesterId)) throw new ApiError("You cannot view this team.", 403, "TEAM_ACCESS_DENIED");
   const profiles = await User.find({ _id: { $in: team.members.map((member) => member.profileId) } }).select("displayName headline skills").lean();
   const profileMap = new Map(profiles.map((profile) => [profile._id.toString(), profile]));
   return { ...serializeTeam(team), members: team.members.map((member) => ({ ...member, profileId: member.profileId.toString(), profile: profileMap.get(member.profileId.toString()) ? { id: member.profileId.toString(), displayName: profileMap.get(member.profileId.toString())?.displayName, headline: profileMap.get(member.profileId.toString())?.headline } : null })) };
@@ -120,11 +121,22 @@ export async function sendInvitation(teamId: string, ownerId: string, input: z.i
   const invitation = await Invitation.create({ teamId: team._id, candidateId, sentBy: objectId(ownerId, "profile"), message: input.message });
   return { id: invitation._id.toString(), status: invitation.status };
 }
+export async function listInvitations(candidateId: string) {
+  const invitations = await Invitation.find({ candidateId: objectId(candidateId, "profile"), status: "PENDING" }).sort({ createdAt: -1 }).lean();
+  const teamIds = [...new Set(invitations.map((invitation) => invitation.teamId.toString()))];
+  const teams = await Team.find({ _id: { $in: teamIds } }).select("name requiredSkills hackathonId").lean();
+  const teamMap = new Map(teams.map((team) => [team._id.toString(), team]));
+  return invitations.flatMap((invitation) => {
+    const team = teamMap.get(invitation.teamId.toString());
+    if (!team) return [];
+    return [{ id: invitation._id.toString(), message: invitation.message, createdAt: invitation.createdAt.toISOString(), team: { id: team._id.toString(), name: team.name, requiredSkills: team.requiredSkills } }];
+  });
+}
 export async function respondToInvitation(invitationId: string, candidateId: string, action: "ACCEPT" | "REJECT") {
-  const invitation = await Invitation.findOneAndUpdate({ _id: objectId(invitationId, "invitation"), candidateId: objectId(candidateId, "profile"), status: "PENDING" }, { $set: { status: action === "ACCEPT" ? "ACCEPTED" : "REJECTED", respondedAt: new Date() } }, { new: true });
+  const invitation = await Invitation.findOneAndUpdate({ _id: objectId(invitationId, "invitation"), candidateId: objectId(candidateId, "profile"), status: "PENDING" }, { $set: { status: action === "ACCEPT" ? "ACCEPTED" : "REJECTED", respondedAt: new Date() } }, { returnDocument: "after" });
   if (!invitation) throw new ApiError("This invitation is no longer pending.", 409, "INVALID_INVITATION_STATE");
   if (action === "ACCEPT") {
-    const team = await Team.findOneAndUpdate({ _id: invitation.teamId, $expr: { $lt: [{ $size: "$members" }, "$capacity"] }, "members.profileId": { $ne: invitation.candidateId } }, { $push: { members: { profileId: invitation.candidateId, role: "Member", status: "ACCEPTED" } } }, { new: true });
+    const team = await Team.findOneAndUpdate({ _id: invitation.teamId, $expr: { $lt: [{ $size: "$members" }, "$capacity"] }, "members.profileId": { $ne: invitation.candidateId } }, { $push: { members: { profileId: invitation.candidateId, role: "Member", status: "ACCEPTED" } } }, { returnDocument: "after" });
     if (!team) throw new ApiError("The team became full before you accepted.", 409, "TEAM_FULL");
   }
   return { id: invitation._id.toString(), status: invitation.status };
@@ -133,9 +145,8 @@ export async function respondToInvitation(invitationId: string, candidateId: str
 export async function createSkillChallenge(teamId: string, ownerId: string, input: z.infer<typeof challengeSchema>) {
   const team = await requireTeamOwner(teamId, ownerId);
   const candidateId = objectId(input.candidateId, "candidate");
-  if (!team.members.some((member) => member.profileId.toString() === candidateId.toString())) {
-    throw new ApiError("Invite the candidate and wait for acceptance before sending a challenge.", 409, "CANDIDATE_NOT_ON_TEAM");
-  }
+  if (team.members.some((member) => member.profileId.toString() === candidateId.toString())) throw new ApiError("This candidate is already on the team.", 409, "ALREADY_MEMBER");
+  if (!(await User.exists({ _id: candidateId, availableForTeams: true }))) throw new ApiError("Candidate not found or unavailable for teams.", 404, "CANDIDATE_NOT_FOUND");
   const duplicate = await SkillChallenge.exists({ teamId: team._id, candidateId, state: { $in: ["SENT", "IN_PROGRESS"] } });
   if (duplicate) throw new ApiError("This candidate already has an active skill challenge for this team.", 409, "CHALLENGE_EXISTS");
   const generated = await generateAssessment({ skill: input.skill, difficulty: "intermediate", count: 5 });
@@ -148,7 +159,7 @@ export async function startSkillChallenge(challengeId: string, candidateId: stri
   const challenge = await SkillChallenge.findOneAndUpdate(
     { _id: objectId(challengeId, "challenge"), candidateId: objectId(candidateId, "profile"), state: "SENT" },
     { $set: { state: "IN_PROGRESS", startedAt: now, expiresAt: new Date(now.getTime() + CHALLENGE_DURATION_SECONDS * 1000) } },
-    { new: true }
+    { returnDocument: "after" }
   );
   if (!challenge) throw new ApiError("This challenge cannot be started in its current state.", 409, "INVALID_CHALLENGE_STATE");
   return { id: challenge._id.toString(), state: challenge.state, skill: challenge.skill, questions: publicQuestions(challenge.questions), startedAt: challenge.startedAt?.toISOString(), expiresAt: challenge.expiresAt?.toISOString() };
@@ -167,10 +178,12 @@ export async function recordChallengeIntegrity(input: { challengeId: string; pro
 export async function submitSkillChallenge(input: { challengeId: string; candidateId: string; answers: Record<string, string>; timeout: boolean }) {
   const candidateObjectId = objectId(input.candidateId, "profile");
   const challengeId = objectId(input.challengeId, "challenge");
-  const challenge = await SkillChallenge.findOneAndUpdate({ _id: challengeId, candidateId: candidateObjectId, state: "IN_PROGRESS" }, { $set: { state: "COMPLETED", submittedAt: new Date() } }, { new: true }).select("+questions.correctOption +questions.explanation");
+  const challenge = await SkillChallenge.findOneAndUpdate({ _id: challengeId, candidateId: candidateObjectId, state: "IN_PROGRESS" }, { $set: { state: "COMPLETED", submittedAt: new Date() } }, { returnDocument: "after" }).select("+questions.correctOption +questions.explanation");
   if (!challenge) throw new ApiError("This challenge was already submitted or is unavailable.", 409, "INVALID_CHALLENGE_STATE");
   const expired = !challenge.expiresAt || Date.now() > challenge.expiresAt.getTime();
-  const answers = expired && !input.timeout ? {} : input.answers;
+  // Challenge deadlines are enforced on the server, independently of the
+  // browser's timeout flag.
+  const answers = expired ? {} : input.answers;
   const scored = scoreMcq(answers, challenge.questions);
   const events = await IntegrityEvent.find({ targetId: challenge._id }).lean();
   const integrity = integritySummary(events as Array<{ type: IntegrityEventType; severity: string }>);
@@ -191,5 +204,60 @@ export async function getSkillChallenge(challengeId: string, requesterId: string
   const isOwner = team?.members.some((member) => member.profileId.toString() === requesterId && member.status === "OWNER");
   if (!isCandidate && !isOwner) throw new ApiError("You cannot view this challenge.", 403, "CHALLENGE_ACCESS_DENIED");
   const events = await IntegrityEvent.find({ targetId: challenge._id }).lean();
-  return { id: challenge._id.toString(), teamId: challenge.teamId.toString(), candidateId: challenge.candidateId.toString(), skill: challenge.skill, state: challenge.state, score: challenge.score, integrity: challenge.integrityScore === undefined ? null : integritySummary(events as Array<{ type: IntegrityEventType; severity: string }>), startedAt: challenge.startedAt?.toISOString() ?? null, expiresAt: challenge.expiresAt?.toISOString() ?? null, submittedAt: challenge.submittedAt?.toISOString() ?? null, questions: isCandidate && challenge.state === "IN_PROGRESS" ? publicQuestions(challenge.questions) : undefined };
+  return { id: challenge._id.toString(), teamId: challenge.teamId.toString(), candidateId: challenge.candidateId.toString(), skill: challenge.skill, state: challenge.state, score: challenge.score, integrity: challenge.integrityScore === undefined ? null : integritySummary(events as Array<{ type: IntegrityEventType; severity: string }>), decision: challenge.decision, canDecide: Boolean(isOwner && ["COMPLETED", "EXPIRED"].includes(challenge.state) && !challenge.decision), startedAt: challenge.startedAt?.toISOString() ?? null, expiresAt: challenge.expiresAt?.toISOString() ?? null, submittedAt: challenge.submittedAt?.toISOString() ?? null, questions: isCandidate && challenge.state === "IN_PROGRESS" ? publicQuestions(challenge.questions) : undefined };
+}
+
+export async function listCandidateChallenges(candidateId: string) {
+  const challenges = await SkillChallenge.find({ candidateId: objectId(candidateId, "profile") }).sort({ createdAt: -1 }).lean();
+  const teamIds = [...new Set(challenges.map((challenge) => challenge.teamId.toString()))];
+  const teams = await Team.find({ _id: { $in: teamIds } }).select("name").lean();
+  const teamNames = new Map(teams.map((team) => [team._id.toString(), team.name]));
+
+  return Promise.all(challenges.map(async (challenge) => {
+    const events = challenge.integrityScore === undefined
+      ? []
+      : await IntegrityEvent.find({ targetId: challenge._id }).lean();
+    return {
+      id: challenge._id.toString(),
+      teamId: challenge.teamId.toString(),
+      teamName: teamNames.get(challenge.teamId.toString()) ?? "Team",
+      skill: challenge.skill,
+      state: challenge.state,
+      expiresAt: challenge.expiresAt?.toISOString() ?? null,
+      score: challenge.score,
+      integrity: challenge.integrityScore === undefined
+        ? null
+        : integritySummary(events as Array<{ type: IntegrityEventType; severity: string }>),
+      decision: challenge.decision,
+    };
+  }));
+}
+
+export async function decideCandidateChallenge(challengeId: string, ownerId: string, decision: "ACCEPT" | "REJECT") {
+  const challenge = await SkillChallenge.findById(objectId(challengeId, "challenge"));
+  if (!challenge) throw new ApiError("Challenge not found.", 404, "CHALLENGE_NOT_FOUND");
+  const team = await requireTeamOwner(challenge.teamId.toString(), ownerId);
+  if (!["COMPLETED", "EXPIRED"].includes(challenge.state) || challenge.decision) throw new ApiError("A completed, undecided challenge is required.", 409, "INVALID_CHALLENGE_STATE");
+  if (decision === "ACCEPT") {
+    if (team.members.length >= team.capacity) throw new ApiError("This team is already full.", 409, "TEAM_FULL");
+    if (team.members.some((member) => member.profileId.toString() === challenge.candidateId.toString())) throw new ApiError("Candidate is already on the team.", 409, "ALREADY_MEMBER");
+    team.members.push({ profileId: challenge.candidateId, role: challenge.skill, status: "ACCEPTED" });
+    await team.save();
+  }
+  challenge.decision = decision === "ACCEPT" ? "ACCEPTED" : "REJECTED";
+  challenge.decidedAt = new Date();
+  await challenge.save();
+  return { id: challenge._id.toString(), decision: challenge.decision };
+}
+
+export async function listTeamChallenges(teamId: string, requesterId: string) {
+  await requireTeamOwner(teamId, requesterId);
+  const challenges = await SkillChallenge.find({ teamId: objectId(teamId, "team") }).sort({ createdAt: -1 }).lean();
+  const candidates = await User.find({ _id: { $in: challenges.map((challenge) => challenge.candidateId) } }).select("displayName headline").lean();
+  const candidateMap = new Map(candidates.map((candidate) => [candidate._id.toString(), candidate]));
+  return Promise.all(challenges.map(async (challenge) => {
+    const events = await IntegrityEvent.find({ targetId: challenge._id }).lean();
+    const candidate = candidateMap.get(challenge.candidateId.toString());
+    return { id: challenge._id.toString(), candidateId: challenge.candidateId.toString(), candidateName: candidate?.displayName ?? "Candidate", candidateHeadline: candidate?.headline ?? "", skill: challenge.skill, state: challenge.state, score: challenge.score, integrity: challenge.integrityScore === undefined ? null : integritySummary(events as Array<{ type: IntegrityEventType; severity: string }>), decision: challenge.decision, canDecide: ["COMPLETED", "EXPIRED"].includes(challenge.state) && !challenge.decision, createdAt: challenge.createdAt.toISOString() };
+  }));
 }

@@ -16,16 +16,16 @@ export default function Home() {
       </p>
       <div className="mt-10 flex flex-wrap gap-3 border-t border-stone-300 pt-8">
         <Link
-          href="/dashboard"
+          href="/onboarding"
           className="inline-flex h-11 items-center border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800"
         >
-          Explore the dashboard
+          Create local profile
         </Link>
         <Link
-          href="/dashboard#skills"
+          href="/assessments"
           className="inline-flex h-11 items-center border border-stone-400 px-5 text-sm font-medium text-stone-800 hover:bg-stone-100"
         >
-          View verified skills
+          Explore assessments
         </Link>
       </div>
     </main>

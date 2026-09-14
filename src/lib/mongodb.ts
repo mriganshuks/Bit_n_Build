@@ -18,6 +18,27 @@ const cached: MongooseCache = global.mongoose || {
 
 global.mongoose = cached;
 
+let legacyProfileIndexMigration: Promise<void> | null = null;
+
+async function removeLegacyProfileIndex() {
+  if (!legacyProfileIndexMigration) {
+    const collection = mongoose.connection.db?.collection("users");
+    legacyProfileIndexMigration = collection
+      ? Promise.all(["username_1", "phone_1", "provider_1_providerAccountId_1"].map((name) => collection.dropIndex(name).catch((error: { code?: number }) => {
+          // Codes 26 and 27 mean a fresh collection or an already-migrated one.
+          if (error.code !== 26 && error.code !== 27) throw error;
+        }))).then(() => undefined)
+      : Promise.resolve();
+  }
+
+  try {
+    await legacyProfileIndexMigration;
+  } catch (error) {
+    legacyProfileIndexMigration = null;
+    throw error;
+  }
+}
+
 export async function connectToDatabase() {
   if (!MONGODB_URI) {
     throw new Error(
@@ -26,23 +47,28 @@ export async function connectToDatabase() {
   }
 
   if (cached.conn && mongoose.connection.readyState === 1) {
+    await removeLegacyProfileIndex();
     return cached.conn;
   }
 
   cached.conn = null;
 
-  try {
-    return await openConnection();
-  } catch {
-    cached.conn = null;
-    cached.promise = null;
-
-    if (mongoose.connection.readyState !== 0) {
-      await mongoose.disconnect().catch(() => undefined);
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      const connection = await openConnection();
+      await removeLegacyProfileIndex();
+      return connection;
+    } catch (error) {
+      lastError = error;
+      cached.conn = null;
+      cached.promise = null;
+      if (mongoose.connection.readyState !== 0) await mongoose.disconnect().catch(() => undefined);
+      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
     }
-
-    return openConnection();
   }
+
+  throw lastError;
 }
 
 async function openConnection() {

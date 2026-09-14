@@ -29,7 +29,7 @@ export async function generateAssessment(input: { skill: string; difficulty: Dif
   try {
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
-      model: process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash",
+      model: process.env.GEMINI_MODEL?.trim() || "gemini-3.6-flash",
       contents: `Create ${input.count} distinct ${input.difficulty} multiple-choice assessment questions for ${input.skill}. Respond with JSON only: {"questions":[{"prompt":"...","topic":"...","options":["...","...","...","..."],"correctIndex":0,"explanation":"..."}]}. All questions must be technically accurate. Do not reuse concepts from these previous fingerprints: ${(input.previousFingerprints ?? []).join(", ")}. Request nonce: ${randomUUID()}.`,
       config: { responseMimeType: "application/json", temperature: 0.85 },
     });

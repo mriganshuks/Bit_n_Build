@@ -29,6 +29,8 @@ const skillChallengeSchema = new Schema(
     score: { type: Number, min: 0, max: 100 },
     integrityScore: { type: Number, min: 0, max: 100 },
     riskLevel: { type: String, enum: ["LOW", "MEDIUM", "HIGH"] },
+    decision: { type: String, enum: ["ACCEPTED", "REJECTED"] },
+    decidedAt: { type: Date },
   },
   { timestamps: true }
 );

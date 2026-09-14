@@ -5,6 +5,7 @@ const navigation = [
   { href: "/profile", label: "Profile" },
   { href: "/skills", label: "Skills" },
   { href: "/assessments", label: "Assessments" },
+  { href: "/hackathons", label: "Hackathons" },
   { href: "/teammates", label: "Find teammates" },
   { href: "/team", label: "My team" },
 ];
