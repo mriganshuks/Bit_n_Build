@@ -57,6 +57,18 @@ export async function getAssessmentAttempt(profileId: string, attemptId: string)
   return publicAttempt(attempt);
 }
 
+export async function getActiveAssessmentAttempt(profileId: string, skill: string) {
+  const now = new Date();
+  const attempt = await AssessmentAttempt.findOne({
+    profileId: objectId(profileId),
+    skill: new RegExp(`^${skill.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"),
+    state: "IN_PROGRESS",
+    expiresAt: { $gt: now },
+  }).sort({ createdAt: -1 }).lean();
+  if (!attempt) return null;
+  return publicAttempt(attempt);
+}
+
 export async function recordAssessmentIntegrity(input: { profileId: string; attemptId: string; events: Array<{ type: IntegrityEventType; severity: "LOW" | "MEDIUM" | "HIGH"; timestamp?: Date; metadata?: Record<string, string | number | boolean> }> }) {
   const targetId = objectId(input.attemptId);
   const profileObjectId = objectId(input.profileId);

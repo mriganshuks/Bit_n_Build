@@ -19,9 +19,11 @@ export function serializeProfile(profile: {
   location: string;
   education: string;
   availableForTeams: boolean;
+  firebaseUid?: string | null;
+  photoUrl?: string | null;
   skills: unknown[];
   projects: unknown[];
   evidence: unknown[];
 }) {
-  return { id: profile._id.toString(), displayName: profile.displayName, email: profile.email, handle: profile.handle, headline: profile.headline, bio: profile.bio, location: profile.location, education: profile.education, availableForTeams: profile.availableForTeams, skills: profile.skills, projects: profile.projects, evidence: profile.evidence };
+  return { id: profile._id.toString(), displayName: profile.displayName, email: profile.email, handle: profile.handle, headline: profile.headline, bio: profile.bio, location: profile.location, education: profile.education, availableForTeams: profile.availableForTeams, firebaseUid: profile.firebaseUid ?? undefined, photoUrl: profile.photoUrl ?? undefined, skills: profile.skills, projects: profile.projects, evidence: profile.evidence };
 }

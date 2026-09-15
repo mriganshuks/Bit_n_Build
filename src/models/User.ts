@@ -42,6 +42,8 @@ const profileSchema = new Schema(
     location: { type: String, trim: true, maxlength: 100, default: "" },
     education: { type: String, trim: true, maxlength: 160, default: "" },
     availableForTeams: { type: Boolean, default: true },
+    firebaseUid: { type: String, trim: true, sparse: true, index: true },
+    photoUrl: { type: String, trim: true, default: "" },
     skills: { type: [skillSchema], default: [] },
     projects: { type: [projectSchema], default: [] },
     evidence: { type: [evidenceSchema], default: [] },
@@ -51,6 +53,7 @@ const profileSchema = new Schema(
 
 profileSchema.index({ handle: 1 }, { unique: true });
 profileSchema.index({ email: 1 }, { unique: true });
+profileSchema.index({ firebaseUid: 1 }, { unique: true, sparse: true });
 profileSchema.index({ "skills.normalizedName": 1, availableForTeams: 1 });
 
 export type UserDocument = InferSchemaType<typeof profileSchema> & { _id: mongoose.Types.ObjectId };

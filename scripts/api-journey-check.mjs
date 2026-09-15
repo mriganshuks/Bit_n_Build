@@ -22,8 +22,11 @@ function session() {
 }
 
 async function cleanup() {
-  const raw = fs.readFileSync(".env.local", "utf8");
-  const uri = raw.split(/\r?\n/).find((line) => line.startsWith("MONGODB_URI="))?.split("=").slice(1).join("=").replace(/^"|"$/g, "");
+  let uri = process.env.MONGODB_URI;
+  if (!uri && fs.existsSync(".env.local")) {
+    const raw = fs.readFileSync(".env.local", "utf8");
+    uri = raw.split(/\r?\n/).find((line) => line.startsWith("MONGODB_URI="))?.split("=").slice(1).join("=").replace(/^"|"$/g, "");
+  }
   if (!uri) return;
   let lastError;
   for (let attempt = 0; attempt < 5; attempt += 1) {

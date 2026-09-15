@@ -12,6 +12,8 @@ export const createProfileSchema = z.object({
   handle: z.string().trim().toLowerCase().regex(/^[a-z0-9_]{3,32}$/, "Use 3–32 lowercase letters, numbers, or underscores."),
   headline: z.string().trim().max(120).optional().default(""),
   location: z.string().trim().max(100).optional().default(""),
+  firebaseUid: z.string().trim().optional(),
+  photoUrl: z.string().trim().optional(),
 });
 export const profilePatchSchema = z.object({
   displayName: z.string().trim().min(2).max(80).optional(),
@@ -20,6 +22,7 @@ export const profilePatchSchema = z.object({
   location: z.string().trim().max(100).optional(),
   education: z.string().trim().max(160).optional(),
   availableForTeams: z.boolean().optional(),
+  photoUrl: z.string().trim().optional(),
 });
 export const skillSchema = z.object({ name: skillName });
 export const projectSchema = z.object({ title: z.string().trim().min(2).max(120), description: z.string().trim().min(10).max(1200), url: urlSchema.optional().or(z.literal("")), skills: z.array(skillName).max(10).default([]) });
@@ -32,10 +35,23 @@ function validId(id: string) {
 
 export async function createProfile(input: z.infer<typeof createProfileSchema>) {
   try {
+    if (input.firebaseUid) {
+      const existingByUid = await User.findOne({ firebaseUid: input.firebaseUid });
+      if (existingByUid) return serializeProfile(existingByUid);
+    }
+
+    const existingByEmail = await User.findOne({ email: input.email.toLowerCase() });
+    if (existingByEmail) {
+      if (input.firebaseUid) existingByEmail.firebaseUid = input.firebaseUid;
+      if (input.photoUrl && !existingByEmail.photoUrl) existingByEmail.photoUrl = input.photoUrl;
+      await existingByEmail.save();
+      return serializeProfile(existingByEmail);
+    }
+
     const profile = await User.create({ ...input, skills: [], projects: [], evidence: [] });
     return serializeProfile(profile);
   } catch (error) {
-    if (isDuplicateKeyError(error)) throw new ApiError("That email or handle already belongs to a local profile.", 409, "PROFILE_CONFLICT");
+    if (isDuplicateKeyError(error)) throw new ApiError("That email or handle already belongs to a profile.", 409, "PROFILE_CONFLICT");
     throw error;
   }
 }

@@ -1,9 +1,12 @@
 import fs from "node:fs";
 import mongoose from "mongoose";
 
-const raw = fs.readFileSync(".env.local", "utf8");
-const line = raw.split(/\r?\n/).find((item) => item.startsWith("MONGODB_URI="));
-const uri = line?.split("=").slice(1).join("=").replace(/^"|"$/g, "");
+let uri = process.env.MONGODB_URI;
+if (!uri && fs.existsSync(".env.local")) {
+  const raw = fs.readFileSync(".env.local", "utf8");
+  const line = raw.split(/\r?\n/).find((item) => item.startsWith("MONGODB_URI="));
+  uri = line?.split("=").slice(1).join("=").replace(/^"|"$/g, "");
+}
 
 try {
   let lastError;

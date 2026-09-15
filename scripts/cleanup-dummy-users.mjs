@@ -6,14 +6,17 @@
 import fs from "node:fs";
 import mongoose from "mongoose";
 
-const raw = fs.readFileSync(".env.local", "utf8");
-const uri = raw
-  .split(/\r?\n/)
-  .find((line) => line.startsWith("MONGODB_URI="))
-  ?.split("=")
-  .slice(1)
-  .join("=")
-  .replace(/^"|"$/g, "");
+let uri = process.env.MONGODB_URI;
+if (!uri && fs.existsSync(".env.local")) {
+  const raw = fs.readFileSync(".env.local", "utf8");
+  uri = raw
+    .split(/\r?\n/)
+    .find((line) => line.startsWith("MONGODB_URI="))
+    ?.split("=")
+    .slice(1)
+    .join("=")
+    .replace(/^"|"$/g, "");
+}
 
 if (!uri) throw new Error("MONGODB_URI is required in .env.local to clean up dummy users.");
 
