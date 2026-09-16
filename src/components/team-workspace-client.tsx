@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useAuth } from "@/components/auth-provider";
+import { apiFetch } from "@/lib/api-client";
 
 type Team = {
   id: string;
@@ -46,21 +48,12 @@ type Invitation = {
   team: { id: string; name: string; requiredSkills: string[] };
 };
 
-async function api<T>(url: string, options?: RequestInit) {
-  const response = await fetch(url, {
-    ...options,
-    headers: { "Content-Type": "application/json", ...options?.headers },
-  });
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error?.message ?? "Request failed.");
-  return body as T;
-}
-
 function status(value: string) {
   return value.replaceAll("_", " ").toLowerCase();
 }
 
 export default function TeamWorkspaceClient() {
+  const { authState, loading: authLoading, signIn } = useAuth();
   const [team, setTeam] = useState<Team | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [challenges, setChallenges] = useState<Challenge[]>([]);
@@ -73,8 +66,8 @@ export default function TeamWorkspaceClient() {
     setLoading(true);
     setError(null);
     try {
-      const { teams } = await api<{ teams: Team[] }>("/api/teams");
-      const { invitations: pendingInvitations } = await api<{
+      const { teams } = await apiFetch<{ teams: Team[] }>("/api/teams");
+      const { invitations: pendingInvitations } = await apiFetch<{
         invitations: Invitation[];
       }>("/api/invitations").catch(() => ({ invitations: [] }));
 
@@ -87,10 +80,10 @@ export default function TeamWorkspaceClient() {
         return;
       }
 
-      const { team: loaded } = await api<{ team: Team }>(`/api/teams/${teams[0].id}`);
+      const { team: loaded } = await apiFetch<{ team: Team }>(`/api/teams/${teams[0].id}`);
       setTeam(loaded);
 
-      const { challenges: loadedChallenges } = await api<{
+      const { challenges: loadedChallenges } = await apiFetch<{
         challenges: Challenge[];
       }>(`/api/teams/${loaded.id}/challenges/list`).catch(() => ({ challenges: [] }));
       setChallenges(loadedChallenges || []);
@@ -102,13 +95,18 @@ export default function TeamWorkspaceClient() {
   }, []);
 
   useEffect(() => {
-    void Promise.resolve().then(load);
-  }, [load]);
+    if (authLoading) return;
+    if (authState === "UNAUTHENTICATED") {
+      setLoading(false);
+      return;
+    }
+    void load();
+  }, [authLoading, authState, load]);
 
   async function discover() {
     if (!team) return;
     try {
-      const { candidates: discovered } = await api<{ candidates: Candidate[] }>(
+      const { candidates: discovered } = await apiFetch<{ candidates: Candidate[] }>(
         `/api/teams/${team.id}/candidates`
       );
       setCandidates(discovered);
@@ -123,7 +121,7 @@ export default function TeamWorkspaceClient() {
   async function invite(candidate: Candidate) {
     if (!team) return;
     try {
-      await api(`/api/teams/${team.id}/invitations`, {
+      await apiFetch(`/api/teams/${team.id}/invitations`, {
         method: "POST",
         body: JSON.stringify({
           candidateId: candidate.id,
@@ -138,7 +136,7 @@ export default function TeamWorkspaceClient() {
 
   async function decide(challenge: Challenge, decision: "ACCEPT" | "REJECT") {
     try {
-      await api(`/api/challenges/${challenge.id}/decision`, {
+      await apiFetch(`/api/challenges/${challenge.id}/decision`, {
         method: "POST",
         body: JSON.stringify({ decision }),
       });
@@ -155,7 +153,7 @@ export default function TeamWorkspaceClient() {
 
   async function respondToInvitation(invitationId: string, action: "ACCEPT" | "REJECT") {
     try {
-      await api(`/api/invitations/${invitationId}`, {
+      await apiFetch(`/api/invitations/${invitationId}`, {
         method: "PATCH",
         body: JSON.stringify({ action }),
       });
@@ -166,8 +164,8 @@ export default function TeamWorkspaceClient() {
     }
   }
 
-  // 1. LOADING STATE
-  if (loading) {
+  // 1. AUTH LOADING OR INITIAL DATA LOADING
+  if (authLoading || (loading && !team && !error)) {
     return (
       <main className="mx-auto max-w-5xl px-6 py-12">
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">
@@ -179,7 +177,29 @@ export default function TeamWorkspaceClient() {
     );
   }
 
-  // 2. ERROR STATE
+  // 2. UNAUTHENTICATED STATE
+  if (authState === "UNAUTHENTICATED") {
+    return (
+      <main className="mx-auto max-w-5xl px-6 py-12">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">
+          Team workspace
+        </p>
+        <h1 className="mt-3 text-3xl font-semibold text-stone-900">Sign in to view your team</h1>
+        <p className="mt-3 max-w-xl text-sm leading-6 text-stone-600">
+          Join a hackathon, form a team, and discover verified builders by their actual evidence.
+        </p>
+        <button
+          type="button"
+          onClick={() => void signIn()}
+          className="mt-6 inline-flex h-10 items-center border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800"
+        >
+          Sign in with Google
+        </button>
+      </main>
+    );
+  }
+
+  // 3. ERROR STATE
   if (error && !team) {
     return (
       <main className="mx-auto max-w-5xl px-6 py-12">
@@ -488,7 +508,7 @@ export function CreateTeamClient({ hackathonId }: { hackathonId: string }) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     try {
-      await api("/api/teams", {
+      await apiFetch("/api/teams", {
         method: "POST",
         body: JSON.stringify({
           hackathonId,

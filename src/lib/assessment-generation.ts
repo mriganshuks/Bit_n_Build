@@ -96,11 +96,18 @@ Rules:
 - The coding problem must be in JavaScript, with a valid starterCode and at least 2 hidden test cases.
 - Request nonce: ${randomUUID()}.`;
 
-    const response = await ai.models.generateContent({
+    const timeoutMs = 12000;
+    const generatePromise = ai.models.generateContent({
       model: process.env.GEMINI_MODEL?.trim() || "gemini-3.6-flash",
       contents: prompt,
       config: { responseMimeType: "application/json", temperature: 0.75 },
     });
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      const timer = setTimeout(() => reject(new Error("Gemini generation timed out after 12s")), timeoutMs);
+      generatePromise.finally(() => clearTimeout(timer));
+    });
+
+    const response = await Promise.race([generatePromise, timeoutPromise]);
 
     const parsed = generatedAssessmentSchema.parse(JSON.parse(response.text ?? "{}"));
     const questions = toQuestions(parsed.questions).filter(

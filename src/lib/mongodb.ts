@@ -19,16 +19,27 @@ const cached: MongooseCache = global.mongoose || {
 global.mongoose = cached;
 
 let legacyProfileIndexMigration: Promise<void> | null = null;
+let legacyProfileIndexMigrationDone = false;
 
 async function removeLegacyProfileIndex() {
+  if (legacyProfileIndexMigrationDone) return;
+
   if (!legacyProfileIndexMigration) {
     const collection = mongoose.connection.db?.collection("users");
     legacyProfileIndexMigration = collection
-      ? Promise.all(["username_1", "phone_1", "provider_1_providerAccountId_1"].map((name) => collection.dropIndex(name).catch((error: { code?: number }) => {
-          // Codes 26 and 27 mean a fresh collection or an already-migrated one.
-          if (error.code !== 26 && error.code !== 27) throw error;
-        }))).then(() => undefined)
-      : Promise.resolve();
+      ? Promise.all(
+          ["username_1", "phone_1", "provider_1_providerAccountId_1"].map((name) =>
+            collection.dropIndex(name).catch((error: { code?: number }) => {
+              // Codes 26 and 27 mean a fresh collection or an already-migrated one.
+              if (error.code !== 26 && error.code !== 27) throw error;
+            })
+          )
+        ).then(() => {
+          legacyProfileIndexMigrationDone = true;
+        })
+      : Promise.resolve().then(() => {
+          legacyProfileIndexMigrationDone = true;
+        });
   }
 
   try {
@@ -47,7 +58,9 @@ export async function connectToDatabase() {
   }
 
   if (cached.conn && mongoose.connection.readyState === 1) {
-    await removeLegacyProfileIndex();
+    if (!legacyProfileIndexMigrationDone) {
+      await removeLegacyProfileIndex();
+    }
     return cached.conn;
   }
 
@@ -57,7 +70,9 @@ export async function connectToDatabase() {
   for (let attempt = 0; attempt < 4; attempt += 1) {
     try {
       const connection = await openConnection();
-      await removeLegacyProfileIndex();
+      if (!legacyProfileIndexMigrationDone) {
+        await removeLegacyProfileIndex();
+      }
       return connection;
     } catch (error) {
       lastError = error;

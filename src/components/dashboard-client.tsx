@@ -38,62 +38,65 @@ type Challenge = {
 const label = (value: string) =>
   value.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
 
+import { apiFetch } from "@/lib/api-client";
+
 export default function DashboardClient() {
-  const { firebaseUser, signIn } = useAuth();
+  const { firebaseUser, profile: authProfile, loading: authLoading, authState, signIn } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [challenges, setChallenges] = useState<Challenge[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // Sync profile state from auth context whenever it updates
+  useEffect(() => {
+    if (authProfile) {
+      setProfile((prev) => prev ?? (authProfile as unknown as Profile));
+    }
+  }, [authProfile]);
+
   const load = useCallback(async () => {
-    setLoading(true);
+    setDataLoading(true);
+    setError(null);
     try {
-      const [profileResponse, teamResponse, invitationResponse, challengeResponse] =
+      const [profileData, teamData, invitationData, challengeData] =
         await Promise.all([
-          fetch("/api/profile"),
-          fetch("/api/teams"),
-          fetch("/api/invitations"),
-          fetch("/api/challenges"),
+          apiFetch<{ profile: Profile }>("/api/profile"),
+          apiFetch<{ teams: Team[] }>("/api/teams").catch(() => ({ teams: [] })),
+          apiFetch<{ invitations: Invitation[] }>("/api/invitations").catch(() => ({ invitations: [] })),
+          apiFetch<{ challenges: Challenge[] }>("/api/challenges").catch(() => ({ challenges: [] })),
         ]);
 
-      const [profileBody, teamBody, invitationBody, challengeBody] = await Promise.all([
-        profileResponse.json(),
-        teamResponse.json(),
-        invitationResponse.json(),
-        challengeResponse.json(),
-      ]);
-
-      if (!profileResponse.ok) {
-        throw new Error(profileBody.error?.message ?? "Create your profile to open the dashboard.");
-      }
-
-      setProfile(profileBody.profile);
-      setTeams(teamResponse.ok ? teamBody.teams : []);
-      setInvitations(invitationResponse.ok ? invitationBody.invitations : []);
-      setChallenges(challengeResponse.ok ? challengeBody.challenges : []);
+      setProfile(profileData.profile);
+      setTeams(teamData.teams ?? []);
+      setInvitations(invitationData.invitations ?? []);
+      setChallenges(challengeData.challenges ?? []);
     } catch (err) {
+      // If profile is not found or unauthenticated, handle safely
+      setProfile(null);
       setError(err instanceof Error ? err.message : "Unable to load dashboard.");
     } finally {
-      setLoading(false);
+      setDataLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void Promise.resolve().then(load);
-  }, [load]);
+    if (authLoading) return;
+    if (authState === "UNAUTHENTICATED") {
+      setProfile(null);
+      return;
+    }
+    void load();
+  }, [authLoading, authState, load]);
 
   async function respond(invitation: Invitation, action: "ACCEPT" | "REJECT") {
     try {
-      const response = await fetch(`/api/invitations/${invitation.id}`, {
+      await apiFetch(`/api/invitations/${invitation.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
       });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error?.message ?? "Unable to respond to invitation.");
       setNotice(action === "ACCEPT" ? `You joined ${invitation.team.name}.` : `You declined ${invitation.team.name}.`);
       await load();
     } catch (err) {
@@ -101,7 +104,8 @@ export default function DashboardClient() {
     }
   }
 
-  if (loading) {
+  // 1. Auth is still loading
+  if (authLoading || (dataLoading && !profile)) {
     return (
       <main className="mx-auto max-w-5xl px-6 py-12 text-sm text-stone-600">
         Loading dashboard…
@@ -109,6 +113,7 @@ export default function DashboardClient() {
     );
   }
 
+  // 2. Unauthenticated or no profile yet
   if (!profile) {
     return (
       <main className="mx-auto max-w-5xl px-6 py-12">
@@ -133,6 +138,15 @@ export default function DashboardClient() {
               className="inline-flex h-10 items-center border border-stone-400 px-5 text-sm font-medium text-stone-800 hover:bg-stone-100"
             >
               Sign in with Google
+            </button>
+          )}
+          {error && (
+            <button
+              type="button"
+              onClick={() => void load()}
+              className="inline-flex h-10 items-center border border-stone-400 px-4 text-sm font-medium text-stone-800 hover:bg-stone-100"
+            >
+              Retry
             </button>
           )}
         </div>

@@ -41,6 +41,7 @@ const assessmentAttemptSchema = new Schema(
 );
 
 assessmentAttemptSchema.index({ profileId: 1, createdAt: -1 });
+assessmentAttemptSchema.index({ profileId: 1, state: 1, expiresAt: 1 });
 export type AssessmentAttemptDocument = InferSchemaType<typeof assessmentAttemptSchema> & { _id: mongoose.Types.ObjectId };
 export const AssessmentAttempt: Model<AssessmentAttemptDocument> =
   (mongoose.models.AssessmentAttempt as Model<AssessmentAttemptDocument>) || mongoose.model<AssessmentAttemptDocument>("AssessmentAttempt", assessmentAttemptSchema);

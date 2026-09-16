@@ -1,24 +1,18 @@
-import { connectToDatabase } from "@/lib/mongodb";
 import { errorResponse } from "@/lib/api";
 import {
-  getCurrentProfileId,
+  getCurrentUserProfile,
   getCurrentVerifiedFirebaseIdentity,
 } from "@/lib/profile-context";
-import { User } from "@/models/User";
 import { serializeProfile } from "@/lib/serializers";
 
 export async function GET() {
   try {
-    const profileId = await getCurrentProfileId();
-    if (profileId) {
-      await connectToDatabase();
-      const user = await User.findById(profileId).lean();
-      if (user) {
-        return Response.json({
-          authenticated: true,
-          profile: serializeProfile(user),
-        });
-      }
+    const resolved = await getCurrentUserProfile();
+    if (resolved?.user) {
+      return Response.json({
+        authenticated: true,
+        profile: serializeProfile(resolved.user),
+      });
     }
 
     const identity = await getCurrentVerifiedFirebaseIdentity();

@@ -13,6 +13,7 @@ const invitationSchema = new Schema(
 );
 
 invitationSchema.index({ teamId: 1, candidateId: 1, status: 1 });
+invitationSchema.index({ candidateId: 1, status: 1, createdAt: -1 });
 export type InvitationDocument = InferSchemaType<typeof invitationSchema> & { _id: mongoose.Types.ObjectId };
 export const Invitation: Model<InvitationDocument> =
   (mongoose.models.Invitation as Model<InvitationDocument>) || mongoose.model<InvitationDocument>("Invitation", invitationSchema);

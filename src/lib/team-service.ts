@@ -213,10 +213,20 @@ export async function listCandidateChallenges(candidateId: string) {
   const teams = await Team.find({ _id: { $in: teamIds } }).select("name").lean();
   const teamNames = new Map(teams.map((team) => [team._id.toString(), team.name]));
 
-  return Promise.all(challenges.map(async (challenge) => {
-    const events = challenge.integrityScore === undefined
-      ? []
-      : await IntegrityEvent.find({ targetId: challenge._id }).lean();
+  const scoredChallengeIds = challenges.filter((c) => c.integrityScore !== undefined).map((c) => c._id);
+  const allEvents = scoredChallengeIds.length
+    ? await IntegrityEvent.find({ targetId: { $in: scoredChallengeIds } }).lean()
+    : [];
+  const eventsByChallenge = new Map<string, Array<{ type: IntegrityEventType; severity: string }>>();
+  for (const event of allEvents) {
+    const key = event.targetId.toString();
+    const list = eventsByChallenge.get(key) ?? [];
+    list.push(event as { type: IntegrityEventType; severity: string });
+    eventsByChallenge.set(key, list);
+  }
+
+  return challenges.map((challenge) => {
+    const events = eventsByChallenge.get(challenge._id.toString()) ?? [];
     return {
       id: challenge._id.toString(),
       teamId: challenge.teamId.toString(),
@@ -227,10 +237,10 @@ export async function listCandidateChallenges(candidateId: string) {
       score: challenge.score,
       integrity: challenge.integrityScore === undefined
         ? null
-        : integritySummary(events as Array<{ type: IntegrityEventType; severity: string }>),
+        : integritySummary(events),
       decision: challenge.decision,
     };
-  }));
+  });
 }
 
 export async function decideCandidateChallenge(challengeId: string, ownerId: string, decision: "ACCEPT" | "REJECT") {
@@ -255,9 +265,34 @@ export async function listTeamChallenges(teamId: string, requesterId: string) {
   const challenges = await SkillChallenge.find({ teamId: objectId(teamId, "team") }).sort({ createdAt: -1 }).lean();
   const candidates = await User.find({ _id: { $in: challenges.map((challenge) => challenge.candidateId) } }).select("displayName headline").lean();
   const candidateMap = new Map(candidates.map((candidate) => [candidate._id.toString(), candidate]));
-  return Promise.all(challenges.map(async (challenge) => {
-    const events = await IntegrityEvent.find({ targetId: challenge._id }).lean();
+
+  const challengeIds = challenges.map((c) => c._id);
+  const allEvents = challengeIds.length
+    ? await IntegrityEvent.find({ targetId: { $in: challengeIds } }).lean()
+    : [];
+  const eventsByChallenge = new Map<string, Array<{ type: IntegrityEventType; severity: string }>>();
+  for (const event of allEvents) {
+    const key = event.targetId.toString();
+    const list = eventsByChallenge.get(key) ?? [];
+    list.push(event as { type: IntegrityEventType; severity: string });
+    eventsByChallenge.set(key, list);
+  }
+
+  return challenges.map((challenge) => {
+    const events = eventsByChallenge.get(challenge._id.toString()) ?? [];
     const candidate = candidateMap.get(challenge.candidateId.toString());
-    return { id: challenge._id.toString(), candidateId: challenge.candidateId.toString(), candidateName: candidate?.displayName ?? "Candidate", candidateHeadline: candidate?.headline ?? "", skill: challenge.skill, state: challenge.state, score: challenge.score, integrity: challenge.integrityScore === undefined ? null : integritySummary(events as Array<{ type: IntegrityEventType; severity: string }>), decision: challenge.decision, canDecide: ["COMPLETED", "EXPIRED"].includes(challenge.state) && !challenge.decision, createdAt: challenge.createdAt.toISOString() };
-  }));
+    return {
+      id: challenge._id.toString(),
+      candidateId: challenge.candidateId.toString(),
+      candidateName: candidate?.displayName ?? "Candidate",
+      candidateHeadline: candidate?.headline ?? "",
+      skill: challenge.skill,
+      state: challenge.state,
+      score: challenge.score,
+      integrity: challenge.integrityScore === undefined ? null : integritySummary(events),
+      decision: challenge.decision,
+      canDecide: ["COMPLETED", "EXPIRED"].includes(challenge.state) && !challenge.decision,
+      createdAt: challenge.createdAt.toISOString(),
+    };
+  });
 }

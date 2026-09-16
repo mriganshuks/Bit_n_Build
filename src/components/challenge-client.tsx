@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 /* eslint-disable react-hooks/exhaustive-deps -- lifecycle listeners intentionally stay bound to one active challenge. */
 
+import { apiFetch } from "@/lib/api-client";
+
 type Question = {
   id: string;
   prompt: string;
@@ -50,11 +52,9 @@ export default function ChallengeClient({ id }: { id: string }) {
   const recentEvents = useRef(new Map<string, number>());
 
   const refresh = async () => {
-    const response = await fetch(`/api/challenges/${id}`);
-    const body = await response.json();
-    if (!response.ok) throw new Error(body.error?.message ?? "Unable to load challenge.");
+    const body = await apiFetch<{ challenge: Challenge }>(`/api/challenges/${id}`);
     setChallenge(body.challenge);
-    return body.challenge as Challenge;
+    return body.challenge;
   };
 
   const stopMedia = () => {
@@ -67,9 +67,8 @@ export default function ChallengeClient({ id }: { id: string }) {
     if (now - (recentEvents.current.get(type) ?? 0) < 2_000) return;
     recentEvents.current.set(type, now);
     try {
-      await fetch(`/api/challenges/${id}/integrity`, {
+      await apiFetch(`/api/challenges/${id}/integrity`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ events: [{ type, severity, timestamp: new Date().toISOString() }] }),
       });
     } catch {
@@ -109,11 +108,12 @@ export default function ChallengeClient({ id }: { id: string }) {
         };
       });
 
-      const response = await fetch(`/api/challenges/${id}/start`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ consent: true }) });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error?.message ?? "Unable to start challenge.");
+      const body = await apiFetch<{ challenge: Challenge }>(`/api/challenges/${id}/start`, {
+        method: "POST",
+        body: JSON.stringify({ consent: true }),
+      });
       setChallenge(body.challenge);
-      setSeconds(Math.max(0, Math.floor((new Date(body.challenge.expiresAt).getTime() - Date.now()) / 1000)));
+      setSeconds(Math.max(0, Math.floor((new Date(body.challenge.expiresAt ?? 0).getTime() - Date.now()) / 1000)));
       void document.documentElement.requestFullscreen?.().catch(() => undefined);
     } catch (cause) {
       stopMedia();
@@ -129,13 +129,10 @@ export default function ChallengeClient({ id }: { id: string }) {
     }
     setSubmitting(true);
     try {
-      const response = await fetch(`/api/challenges/${id}/submit`, {
+      const body = await apiFetch<{ result: unknown }>(`/api/challenges/${id}/submit`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ answers, timeout }),
       });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error?.message ?? "Unable to submit challenge.");
       stopMedia();
       if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => undefined);
       await refresh();

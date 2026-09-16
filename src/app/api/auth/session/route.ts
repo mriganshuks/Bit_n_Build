@@ -13,7 +13,13 @@ export async function POST(request: Request) {
       throw new ApiError("Firebase idToken is required.", 400, "MISSING_TOKEN");
     }
 
-    const identity = await verifyFirebaseIdToken(body.idToken);
+    let identity;
+    try {
+      identity = await verifyFirebaseIdToken(body.idToken);
+    } catch (tokenErr) {
+      const msg = tokenErr instanceof Error ? tokenErr.message : "Invalid or expired Firebase ID token.";
+      throw new ApiError(msg, 401, "INVALID_TOKEN");
+    }
     await connectToDatabase();
 
     let user = await User.findOne({ firebaseUid: identity.uid });

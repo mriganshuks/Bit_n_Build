@@ -36,6 +36,8 @@ const skillChallengeSchema = new Schema(
 );
 
 skillChallengeSchema.index({ candidateId: 1, state: 1 });
+skillChallengeSchema.index({ candidateId: 1, createdAt: -1 });
+skillChallengeSchema.index({ teamId: 1, createdAt: -1 });
 skillChallengeSchema.index({ teamId: 1, candidateId: 1, state: 1 });
 export type SkillChallengeDocument = InferSchemaType<typeof skillChallengeSchema> & { _id: mongoose.Types.ObjectId };
 export const SkillChallenge: Model<SkillChallengeDocument> =

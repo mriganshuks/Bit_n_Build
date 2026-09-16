@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import { ApiError } from "@/lib/api";
 import { connectToDatabase } from "@/lib/mongodb";
 import { verifyFirebaseIdToken, type VerifiedFirebaseIdentity } from "@/lib/firebase/server";
-import { User } from "@/models/User";
+import { User, type UserDocument } from "@/models/User";
 
 export const PROFILE_COOKIE = "pramaan_profile_id";
 export const SESSION_TOKEN_COOKIE = "pramaan_session_token";
@@ -32,7 +32,13 @@ export async function getCurrentVerifiedFirebaseIdentity(): Promise<VerifiedFire
   }
 }
 
-export async function getCurrentProfileId(): Promise<string | null> {
+export type CurrentUserProfileResult = {
+  profileId: string;
+  user: UserDocument;
+  identity: VerifiedFirebaseIdentity | null;
+};
+
+export async function getCurrentUserProfile(): Promise<CurrentUserProfileResult | null> {
   // 1. Authoritative Firebase ID token verification
   const identity = await getCurrentVerifiedFirebaseIdentity();
   if (identity) {
@@ -46,7 +52,10 @@ export async function getCurrentProfileId(): Promise<string | null> {
         await user.save();
       }
     }
-    if (user) return user._id.toString();
+    if (user) {
+      return { profileId: user._id.toString(), user, identity };
+    }
+    return null;
   }
 
   // 2. Fallback to pramaan_profile_id cookie in development / automated test environments only
@@ -55,16 +64,27 @@ export async function getCurrentProfileId(): Promise<string | null> {
 
   if (cookieProfileId && mongoose.isValidObjectId(cookieProfileId)) {
     // In production, we do not allow impersonation via raw cookie without verified Firebase identity
-    if (process.env.NODE_ENV === "production" && !identity) {
+    const allowLegacyCookie =
+      process.env.NODE_ENV !== "production" ||
+      process.env.ALLOW_DEV_COOKIES === "true";
+
+    if (!allowLegacyCookie && !identity) {
       return null;
     }
 
     await connectToDatabase();
-    const existing = await User.findById(cookieProfileId).select("_id").lean();
-    if (existing) return existing._id.toString();
+    const existing = await User.findById(cookieProfileId);
+    if (existing) {
+      return { profileId: existing._id.toString(), user: existing, identity: null };
+    }
   }
 
   return null;
+}
+
+export async function getCurrentProfileId(): Promise<string | null> {
+  const resolved = await getCurrentUserProfile();
+  return resolved?.profileId ?? null;
 }
 
 export async function requireCurrentProfileId(): Promise<string> {
@@ -73,6 +93,14 @@ export async function requireCurrentProfileId(): Promise<string> {
     throw new ApiError("Sign in or create your profile before continuing.", 401, "AUTH_REQUIRED");
   }
   return profileId;
+}
+
+export async function requireCurrentUserProfile(): Promise<CurrentUserProfileResult> {
+  const resolved = await getCurrentUserProfile();
+  if (!resolved) {
+    throw new ApiError("Sign in or create your profile before continuing.", 401, "AUTH_REQUIRED");
+  }
+  return resolved;
 }
 
 export function profileCookieOptions() {
@@ -84,4 +112,3 @@ export function profileCookieOptions() {
     maxAge: 60 * 60 * 24 * 365,
   };
 }
-

@@ -9,16 +9,52 @@ export type VerifiedFirebaseIdentity = {
   emailVerified: boolean;
 };
 
+export function formatFirebasePrivateKey(rawKey?: string): string | undefined {
+  if (!rawKey) return undefined;
+  let k = rawKey.trim();
+
+  // If ends with comma (e.g. copied from serviceAccountKey.json with trailing comma)
+  if (k.endsWith(",")) {
+    k = k.slice(0, -1).trim();
+  }
+
+  // Strip surrounding double quotes or single quotes
+  if ((k.startsWith('"') && k.endsWith('"')) || (k.startsWith("'") && k.endsWith("'"))) {
+    k = k.slice(1, -1);
+  }
+
+  // Handle escaped double quotes
+  if (k.startsWith('\\"') && k.endsWith('\\"')) {
+    k = k.slice(2, -2);
+  }
+
+  // Convert literal \r\n or \n string to actual newlines
+  k = k.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\r\n/g, "\n");
+
+  return k.trim();
+}
+
+function cleanEnvString(val?: string): string | undefined {
+  if (!val) return undefined;
+  let s = val.trim();
+  if (s.endsWith(",")) s = s.slice(0, -1).trim();
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    s = s.slice(1, -1);
+  }
+  return s.trim();
+}
+
 function getAdminApp(): App {
   const existing = getApps();
   if (existing.length > 0 && existing[0]) {
     return existing[0];
   }
 
-  const projectId =
-    process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  const projectId = cleanEnvString(
+    process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+  );
+  const clientEmail = cleanEnvString(process.env.FIREBASE_CLIENT_EMAIL);
+  const privateKey = formatFirebasePrivateKey(process.env.FIREBASE_PRIVATE_KEY);
 
   if (clientEmail && privateKey) {
     return initializeApp({

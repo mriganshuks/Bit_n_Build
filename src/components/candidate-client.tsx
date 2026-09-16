@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { apiFetch } from "@/lib/api-client";
+
 type Profile = {
   id: string;
   displayName: string;
@@ -21,21 +23,22 @@ export default function CandidateClient({ candidateId, teamId }: { candidateId: 
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    void fetch(`/api/profiles/${candidateId}`).then(async (response) => {
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error?.message ?? "Unable to load candidate.");
-      setProfile(body.profile);
-    }).catch((error: unknown) => setError(error instanceof Error ? error.message : "Unable to load candidate."));
+    void apiFetch<{ profile: Profile }>(`/api/profiles/${candidateId}`)
+      .then((body) => setProfile(body.profile))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Unable to load candidate."));
   }, [candidateId]);
 
   async function sendChallenge() {
     if (!teamId || !challengeSkill) return;
     try {
-      const response = await fetch(`/api/teams/${teamId}/challenges`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ candidateId, skill: challengeSkill }) });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error?.message ?? "Unable to create challenge.");
-      setNotice(`Challenge sent. In the candidate’s local profile session, open /challenge/${body.challenge.id} to complete it.`);
-    } catch (error) { setError(error instanceof Error ? error.message : "Unable to create challenge."); }
+      const body = await apiFetch<{ challenge: { id: string } }>(`/api/teams/${teamId}/challenges`, {
+        method: "POST",
+        body: JSON.stringify({ candidateId, skill: challengeSkill }),
+      });
+      setNotice(`Challenge sent. The candidate can now view and complete this challenge.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to create challenge.");
+    }
   }
 
   if (!profile) return <main className="mx-auto max-w-5xl px-6 py-10 text-sm text-stone-600">{error ?? "Loading candidate…"}</main>;
