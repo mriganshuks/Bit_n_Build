@@ -28,6 +28,7 @@ export default function AssessmentClient({ skill }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmingSubmit, setConfirmingSubmit] = useState(false);
   const [camera, setCamera] = useState(false);
   const [microphone, setMicrophone] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
@@ -321,10 +322,18 @@ export default function AssessmentClient({ skill }: Props) {
           </div>
         )}
         <div className="mt-6 flex gap-3">
-          <button type="button" disabled={starting || skillEligible === false} onClick={() => void start()} className="h-11 border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800 disabled:opacity-50">
+          <button
+            type="button"
+            disabled={starting || skillEligible === false}
+            onClick={() => void start()}
+            className="h-11 border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800 active:bg-stone-950 transition-colors disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-stone-900"
+          >
             {starting ? "Requesting permission…" : "Allow permissions and start"}
           </button>
-          <Link href="/assessments" className="inline-flex h-11 items-center border border-stone-400 px-5 text-sm text-stone-800 hover:bg-stone-100">
+          <Link
+            href="/assessments"
+            className="inline-flex h-11 items-center border border-stone-400 px-5 text-sm text-stone-800 hover:bg-stone-100 active:bg-stone-200 transition-colors focus-visible:ring-2 focus-visible:ring-stone-900"
+          >
             Cancel
           </Link>
         </div>
@@ -341,7 +350,7 @@ export default function AssessmentClient({ skill }: Props) {
           <h1 className="mt-2 text-2xl font-semibold">{attempt.skill}</h1>
         </div>
         <div className="grid grid-cols-3 gap-5 text-right text-xs text-stone-600">
-          <span>Time<br /><strong className="text-base text-stone-900">{time}</strong></span>
+          <span>Time<br /><strong className={`text-base font-semibold ${seconds <= 180 ? "text-red-700" : "text-stone-900"}`}>{time}</strong></span>
           <span>Camera<br /><strong className="text-stone-900">{camera ? "Active" : "Lost"}</strong></span>
           <span>Mic<br /><strong className="text-stone-900">{microphone ? "Active" : "Lost"}</strong></span>
         </div>
@@ -349,7 +358,13 @@ export default function AssessmentClient({ skill }: Props) {
       {(!camera || !microphone) && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
           <span>Camera and microphone monitoring are not connected.</span>
-          <button onClick={() => void reconnectMedia()} className="h-9 border border-amber-900 px-3 text-xs font-medium">Reconnect monitoring</button>
+          <button
+            type="button"
+            onClick={() => void reconnectMedia()}
+            className="h-9 border border-amber-900 px-3 text-xs font-medium hover:bg-amber-100 transition-colors"
+          >
+            Reconnect monitoring
+          </button>
         </div>
       )}
       <div className="mt-4 flex gap-3 border border-stone-300 bg-stone-100 p-3 text-xs text-stone-600">
@@ -359,10 +374,22 @@ export default function AssessmentClient({ skill }: Props) {
       {attempt.notice && <p className="mt-4 border border-stone-300 p-3 text-sm text-stone-700">{attempt.notice}</p>}
       {notice && <p className="mt-4 border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{notice}</p>}
       <div className="mt-6 flex gap-5 border-b border-stone-200 text-sm">
-        <button onClick={() => setSection("MCQ")} className={section === "MCQ" ? "border-b-2 border-stone-900 pb-3 font-medium" : "pb-3 text-stone-500"}>
+        <button
+          type="button"
+          onClick={() => setSection("MCQ")}
+          className={`pb-3 font-medium transition-colors ${
+            section === "MCQ" ? "border-b-2 border-stone-900 text-stone-900" : "text-stone-500 hover:text-stone-800"
+          }`}
+        >
           MCQs · {Object.keys(answers).length}/{attempt.questions.length}
         </button>
-        <button onClick={() => setSection("CODE")} className={section === "CODE" ? "border-b-2 border-stone-900 pb-3 font-medium" : "pb-3 text-stone-500"}>
+        <button
+          type="button"
+          onClick={() => setSection("CODE")}
+          className={`pb-3 font-medium transition-colors ${
+            section === "CODE" ? "border-b-2 border-stone-900 text-stone-900" : "text-stone-500 hover:text-stone-800"
+          }`}
+        >
           Coding challenge
         </button>
       </div>
@@ -375,16 +402,48 @@ export default function AssessmentClient({ skill }: Props) {
           <h2 className="mt-5 text-xl font-medium leading-8">{question.prompt}</h2>
           <fieldset className="mt-7 grid gap-3">
             <legend className="sr-only">Answer choices</legend>
-            {question.options.map((option) => (
-              <label key={option.id} className="flex cursor-pointer gap-3 border border-stone-300 bg-white p-4 text-sm hover:bg-stone-100">
-                <input type="radio" name={question.id} checked={answers[question.id] === option.id} onChange={() => setAnswers((current) => ({ ...current, [question.id]: option.id }))} />
-                <span><strong>{option.id}.</strong> {option.text}</span>
-              </label>
-            ))}
+            {question.options.map((option) => {
+              const isSelected = answers[question.id] === option.id;
+              return (
+                <label
+                  key={option.id}
+                  className={`flex cursor-pointer items-center gap-3 border p-4 text-sm transition-all ${
+                    isSelected
+                      ? "border-stone-900 bg-stone-100 ring-1 ring-stone-900 font-medium text-stone-950"
+                      : "border-stone-300 bg-white text-stone-800 hover:border-stone-400 hover:bg-stone-50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name={question.id}
+                    checked={isSelected}
+                    onChange={() => setAnswers((current) => ({ ...current, [question.id]: option.id }))}
+                    className="accent-stone-900 h-4 w-4"
+                  />
+                  <span className="flex-1">
+                    <strong className={isSelected ? "text-stone-950" : "text-stone-700"}>{option.id}.</strong> {option.text}
+                  </span>
+                </label>
+              );
+            })}
           </fieldset>
           <div className="mt-6 flex justify-between">
-            <button disabled={index === 0} onClick={() => setIndex((value) => Math.max(0, value - 1))} className="h-10 border border-stone-400 px-4 text-sm disabled:opacity-40">Previous</button>
-            <button disabled={index === attempt.questions.length - 1} onClick={() => setIndex((value) => Math.min(attempt.questions.length - 1, value + 1))} className="h-10 border border-stone-900 px-4 text-sm disabled:opacity-40">Next</button>
+            <button
+              type="button"
+              disabled={index === 0}
+              onClick={() => setIndex((value) => Math.max(0, value - 1))}
+              className="h-10 border border-stone-400 px-4 text-sm hover:bg-stone-100 active:bg-stone-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-stone-900"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              disabled={index === attempt.questions.length - 1}
+              onClick={() => setIndex((value) => Math.min(attempt.questions.length - 1, value + 1))}
+              className="h-10 border border-stone-900 bg-stone-900 px-4 text-sm text-stone-50 hover:bg-stone-800 active:bg-stone-950 transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-stone-900"
+            >
+              Next
+            </button>
           </div>
         </section>
       ) : (
@@ -395,15 +454,54 @@ export default function AssessmentClient({ skill }: Props) {
           <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-stone-600">
             {attempt.codingProblem.constraints.map((constraint) => <li key={constraint}>{constraint}</li>)}
           </ul>
-          <textarea value={code} onChange={(event) => setCode(event.target.value)} spellCheck={false} aria-label="Coding submission" className="mt-6 min-h-72 w-full border border-stone-300 bg-stone-950 p-4 font-mono text-sm text-stone-100" />
+          <textarea
+            value={code}
+            onChange={(event) => setCode(event.target.value)}
+            spellCheck={false}
+            aria-label="Coding submission"
+            className="mt-6 min-h-72 w-full border border-stone-300 bg-stone-950 p-4 font-mono text-sm text-stone-100 focus:outline-none focus:ring-2 focus:ring-stone-500"
+          />
           <p className="mt-3 text-sm text-stone-600">Code is sent only to the separately configured secure evaluation service on submission. PRAMAAN never executes it in its Next.js server.</p>
         </section>
       )}
       {error && <p className="mt-5 text-sm text-red-700">{error}</p>}
       <div className="mt-8 flex justify-end">
-        <button disabled={submitting} onClick={() => void submit()} className="h-11 border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 disabled:opacity-50">
-          {submitting ? "Submitting…" : "Submit assessment"}
-        </button>
+        {confirmingSubmit ? (
+          <div className="flex flex-col sm:flex-row items-end sm:items-center gap-3 border border-stone-300 bg-stone-50 p-4">
+            <div className="text-sm text-stone-800">
+              <p className="font-semibold text-stone-900">Ready to submit?</p>
+              <p className="text-xs text-stone-600 mt-0.5">
+                {Object.keys(answers).length} of {attempt.questions.length} questions answered. You cannot change answers after submitting.
+              </p>
+            </div>
+            <div className="flex gap-2 ml-auto">
+              <button
+                type="button"
+                onClick={() => setConfirmingSubmit(false)}
+                className="h-9 border border-stone-400 px-3 text-xs font-medium text-stone-800 hover:bg-stone-100 transition-colors"
+              >
+                Review answers
+              </button>
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => void submit(false)}
+                className="h-9 border border-stone-900 bg-stone-900 px-4 text-xs font-medium text-stone-50 hover:bg-stone-800 active:bg-stone-950 transition-colors disabled:opacity-50"
+              >
+                {submitting ? "Submitting…" : "Confirm submission"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => setConfirmingSubmit(true)}
+            className="h-11 border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800 active:bg-stone-950 transition-colors disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-stone-900"
+          >
+            Submit assessment
+          </button>
+        )}
       </div>
     </main>
   );

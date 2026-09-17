@@ -28,8 +28,6 @@ export default function SkillsClient() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
     try {
       const body = await apiFetch<{ profile: Profile }>("/api/profile");
       setProfile(body.profile);
@@ -42,13 +40,8 @@ export default function SkillsClient() {
   }, []);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (authState === "UNAUTHENTICATED") {
-      setLoading(false);
-      setProfile(null);
-      return;
-    }
-    void load();
+    if (authLoading || authState === "UNAUTHENTICATED") return;
+    void Promise.resolve().then(() => load());
   }, [authLoading, authState, load]);
 
   async function add(event: FormEvent<HTMLFormElement>) {
@@ -82,7 +75,12 @@ export default function SkillsClient() {
     }
   }
 
+  const [confirmingSkill, setConfirmingSkill] = useState<string | null>(null);
+  const [removingSkill, setRemovingSkill] = useState<string | null>(null);
+
   async function remove(name: string) {
+    setRemovingSkill(name);
+    setConfirmingSkill(null);
     setError(null);
     setNotice(null);
     try {
@@ -91,12 +89,15 @@ export default function SkillsClient() {
         { method: "DELETE" }
       );
       setProfile(body.profile);
+      setNotice(`Removed ${name} from your skills.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to remove skill.");
+    } finally {
+      setRemovingSkill(null);
     }
   }
 
-  if (authLoading || (loading && !profile)) {
+  if (authLoading || (authState === "AUTHENTICATED" && loading && !profile)) {
     return (
       <main className="mx-auto max-w-5xl px-6 py-10 text-sm text-stone-600">
         Loading skills…
@@ -115,7 +116,7 @@ export default function SkillsClient() {
         <button
           type="button"
           onClick={() => void signIn()}
-          className="mt-6 inline-flex h-10 items-center border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800"
+          className="mt-6 inline-flex h-10 items-center border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800 active:bg-stone-950 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900"
         >
           Sign in with Google
         </button>
@@ -132,14 +133,14 @@ export default function SkillsClient() {
         <div className="mt-6 flex gap-4">
           <Link
             href="/onboarding"
-            className="inline-flex h-10 items-center border border-stone-900 bg-stone-900 px-4 text-sm font-medium text-stone-50 hover:bg-stone-800"
+            className="inline-flex h-10 items-center border border-stone-900 bg-stone-900 px-4 text-sm font-medium text-stone-50 hover:bg-stone-800 active:bg-stone-950 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900"
           >
             Create profile
           </Link>
           <button
             type="button"
             onClick={() => void load()}
-            className="inline-flex h-10 items-center border border-stone-400 px-4 text-sm font-medium text-stone-800 hover:bg-stone-100"
+            className="inline-flex h-10 items-center border border-stone-400 px-4 text-sm font-medium text-stone-800 hover:bg-stone-100 active:bg-stone-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900"
           >
             Retry
           </button>
@@ -157,13 +158,27 @@ export default function SkillsClient() {
       </p>
 
       {notice && (
-        <div className="mt-4 border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">
-          {notice}
+        <div className="mt-4 border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900 flex items-center justify-between">
+          <span>{notice}</span>
+          <button
+            type="button"
+            onClick={() => setNotice(null)}
+            className="text-xs text-emerald-700 hover:text-emerald-950 underline ml-3"
+          >
+            Dismiss
+          </button>
         </div>
       )}
       {error && (
-        <div className="mt-4 border border-red-300 bg-red-50 p-3 text-sm text-red-700">
-          {error}
+        <div className="mt-4 border border-red-300 bg-red-50 p-3 text-sm text-red-700 flex items-center justify-between">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="text-xs text-red-600 hover:text-red-900 underline ml-3"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
@@ -173,29 +188,65 @@ export default function SkillsClient() {
             key={skill.name}
             className="grid gap-2 py-5 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center sm:gap-6"
           >
-            <p className="font-medium text-stone-900">{skill.name}</p>
+            <div>
+              <p className="font-medium text-stone-900">{skill.name}</p>
+              <div className="mt-1 flex items-center gap-3">
+                <span className="text-xs font-medium text-stone-700">{label(skill.status)}</span>
+                <Link
+                  href={`/assessments/${encodeURIComponent(skill.name)}`}
+                  className="text-xs text-stone-500 hover:text-stone-900 underline transition-colors"
+                  title={`Take ${skill.name} assessment`}
+                >
+                  Take assessment →
+                </Link>
+              </div>
+            </div>
             <p className="text-sm text-stone-600">
               {skill.assessmentScore === undefined ? "No assessment" : `${skill.assessmentScore}%`}
             </p>
             <p className="text-sm text-stone-600">
               {skill.evidenceCount} evidence item{skill.evidenceCount === 1 ? "" : "s"}
             </p>
-            <div className="flex items-center gap-4">
-              <p className="text-sm font-medium text-stone-900">{label(skill.status)}</p>
-              <button
-                type="button"
-                onClick={() => void remove(skill.name)}
-                className="text-sm text-stone-500 underline hover:text-stone-900"
-              >
-                Remove
-              </button>
+            <div className="flex items-center gap-3">
+              {confirmingSkill === skill.name ? (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-stone-600">Remove?</span>
+                  <button
+                    type="button"
+                    disabled={removingSkill === skill.name}
+                    onClick={() => void remove(skill.name)}
+                    className="font-medium text-red-700 hover:text-red-900 underline disabled:opacity-50"
+                  >
+                    {removingSkill === skill.name ? "Removing…" : "Confirm"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingSkill(null)}
+                    className="text-stone-500 hover:text-stone-800 underline"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={removingSkill === skill.name}
+                  onClick={() => setConfirmingSkill(skill.name)}
+                  className="text-sm text-stone-500 underline hover:text-stone-900 transition-colors disabled:opacity-50"
+                >
+                  {removingSkill === skill.name ? "Removing…" : "Remove"}
+                </button>
+              )}
             </div>
           </div>
         ))}
         {profile.skills.length === 0 && (
-          <p className="py-5 text-sm text-stone-600">
-            Add a skill to begin building a verifiable profile.
-          </p>
+          <div className="py-8">
+            <p className="text-sm font-medium text-stone-800">No skills claimed yet</p>
+            <p className="mt-1 text-xs text-stone-500">
+              Claiming a technical skill enables you to take assessments, attach verified evidence, and match with teams.
+            </p>
+          </div>
         )}
       </div>
 
@@ -209,13 +260,13 @@ export default function SkillsClient() {
           required
           minLength={1}
           disabled={submitting}
-          placeholder="e.g. JavaScript"
-          className="h-11 min-w-0 flex-1 border border-stone-300 bg-white px-3 text-stone-900 disabled:opacity-60"
+          placeholder="e.g. JavaScript, C++, Python"
+          className="h-11 min-w-0 flex-1 border border-stone-300 bg-white px-3 text-stone-900 hover:border-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition-all disabled:opacity-60"
         />
         <button
           type="submit"
           disabled={submitting}
-          className="h-11 border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800 disabled:opacity-50"
+          className="h-11 border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800 active:bg-stone-950 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 disabled:opacity-50"
         >
           {submitting ? "Adding…" : "Add skill"}
         </button>

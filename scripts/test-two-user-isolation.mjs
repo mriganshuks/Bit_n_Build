@@ -121,25 +121,32 @@ async function runTest() {
   }
   console.log("   ✓ User B has only Java and C++. React and Python do NOT appear.");
 
-  // 3. Testing C++ Assessment with encoded "c%2B%2B" & User Isolation
-  console.log("\n3. Testing C++ assessment eligibility and URL encoding...");
-  // User A has NOT claimed C++. Calling start with "c%2B%2B" must be REJECTED with 403
-  const userAStartCppEncoded = await userASession("/api/assessment/start", {
-    method: "POST",
-    body: JSON.stringify({ skill: "c%2B%2B", difficulty: "intermediate", consent: true }),
-  });
-  console.log(`   User A (unclaimed) starting c%2B%2B: HTTP ${userAStartCppEncoded.status}`);
-  if (userAStartCppEncoded.status !== 403) {
-    throw new Error(`Expected HTTP 403 for User A attempting unclaimed c%2B%2B, got ${userAStartCppEncoded.status}`);
+  // 3. Testing C++ Assessment with all representations [C++, c++, C%2B%2B, c%2B%2B] & User Isolation
+  console.log("\n3. Testing C++ assessment regression variants [C++, c++, C%2B%2B, c%2B%2B]...");
+  const cppVariants = ["C++", "c++", "C%2B%2B", "c%2B%2B"];
+
+  // User A has NOT claimed C++. Calling start with ANY of the 4 variants MUST be REJECTED with 403
+  for (const variant of cppVariants) {
+    const userAStartCpp = await userASession("/api/assessment/start", {
+      method: "POST",
+      body: JSON.stringify({ skill: variant, difficulty: "intermediate", consent: true }),
+    });
+    console.log(`   User A (unclaimed) starting "${variant}": HTTP ${userAStartCpp.status}`);
+    if (userAStartCpp.status !== 403) {
+      throw new Error(`Expected HTTP 403 for User A attempting unclaimed "${variant}", got ${userAStartCpp.status}`);
+    }
+    if (userAStartCpp.body.error?.code !== "SKILL_NOT_CLAIMED") {
+      throw new Error(`Expected SKILL_NOT_CLAIMED for User A attempting "${variant}", got ${userAStartCpp.body.error?.code}`);
+    }
   }
-  console.log("   ✓ User A rejected with 403 SKILL_NOT_CLAIMED for encoded c%2B%2B.");
+  console.log("   ✓ User A rejected with 403 SKILL_NOT_CLAIMED for all 4 variants: C++, c++, C%2B%2B, c%2B%2B.");
 
   // User B HAS claimed C++. Calling start with "c%2B%2B" must be ALLOWED with 201
   const userBStartCppEncoded = await userBSession("/api/assessment/start", {
     method: "POST",
     body: JSON.stringify({ skill: "c%2B%2B", difficulty: "intermediate", consent: true }),
   });
-  console.log(`   User B (claimed C++) starting c%2B%2B: HTTP ${userBStartCppEncoded.status}`);
+  console.log(`   User B (claimed C++) starting "c%2B%2B": HTTP ${userBStartCppEncoded.status}`);
   if (userBStartCppEncoded.status !== 201 || !userBStartCppEncoded.body.attempt?.id) {
     throw new Error(`Expected HTTP 201 for User B starting c%2B%2B, got ${userBStartCppEncoded.status}: ${JSON.stringify(userBStartCppEncoded.body)}`);
   }
@@ -148,6 +155,60 @@ async function runTest() {
     throw new Error(`Expected canonical skill name "C++" in attempt, got: ${userBStartCppEncoded.body.attempt.skill}`);
   }
   console.log("   ✓ Attempt stored canonical skill name 'C++'.");
+
+  // User B attempts to start React and Python (claimed by User A, NOT claimed by User B)
+  console.log("\n3b. Testing two-user privacy: User B cannot start User A's claimed skills (React, Python)...");
+  for (const skill of ["React", "Python"]) {
+    const userBStartA = await userBSession("/api/assessment/start", {
+      method: "POST",
+      body: JSON.stringify({ skill, difficulty: "intermediate", consent: true }),
+    });
+    console.log(`   User B starting unclaimed "${skill}": HTTP ${userBStartA.status}`);
+    if (userBStartA.status !== 403) {
+      throw new Error(`Expected HTTP 403 for User B attempting unclaimed "${skill}", got ${userBStartA.status}`);
+    }
+    if (userBStartA.body.error?.code !== "SKILL_NOT_CLAIMED") {
+      throw new Error(`Expected SKILL_NOT_CLAIMED for User B attempting "${skill}", got ${userBStartA.body.error?.code}`);
+    }
+  }
+  console.log("   ✓ User B cannot start React or Python assessments through the API.");
+
+  // User A MUST still be able to start React and Python assessments
+  console.log("\n3c. Verifying User A CAN start React and Python assessments...");
+  const userAStartReact = await userASession("/api/assessment/start", {
+    method: "POST",
+    body: JSON.stringify({ skill: "React", difficulty: "intermediate", consent: true }),
+  });
+  console.log(`   User A starting claimed "React": HTTP ${userAStartReact.status}`);
+  if (userAStartReact.status !== 201 || !userAStartReact.body.attempt?.id) {
+    throw new Error(`Expected HTTP 201 for User A starting React, got ${userAStartReact.status}`);
+  }
+  console.log(`   ✓ User A successfully started React assessment! Attempt ID: ${userAStartReact.body.attempt.id}`);
+
+  // User A submits the React assessment so there is no concurrent active assessment
+  console.log("   Submitting User A React assessment...");
+  const userASubmitReact = await userASession("/api/assessment/submit", {
+    method: "POST",
+    body: JSON.stringify({
+      assessmentId: userAStartReact.body.attempt.id,
+      answers: {},
+      timeout: false,
+    }),
+  });
+  if (!userASubmitReact.ok) {
+    throw new Error(`User A failed to submit React assessment: ${JSON.stringify(userASubmitReact.body)}`);
+  }
+  console.log("   ✓ User A React assessment submitted.");
+
+  const userAStartPython = await userASession("/api/assessment/start", {
+    method: "POST",
+    body: JSON.stringify({ skill: "Python", difficulty: "intermediate", consent: true }),
+  });
+  console.log(`   User A starting claimed "Python": HTTP ${userAStartPython.status}`);
+  if (userAStartPython.status !== 201 || !userAStartPython.body.attempt?.id) {
+    throw new Error(`Expected HTTP 201 for User A starting Python, got ${userAStartPython.status}`);
+  }
+  console.log(`   ✓ User A successfully started Python assessment! Attempt ID: ${userAStartPython.body.attempt.id}`);
 
   // 4. Test First-Time Skill Addition vs Duplicate Skill Addition (Bug 2)
   console.log("\n4. Testing first-time skill addition vs duplicate addition (Bug 2)...");

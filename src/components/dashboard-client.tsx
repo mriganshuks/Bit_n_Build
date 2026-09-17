@@ -41,7 +41,7 @@ const label = (value: string) =>
 import { apiFetch } from "@/lib/api-client";
 
 export default function DashboardClient() {
-  const { firebaseUser, profile: authProfile, loading: authLoading, authState, signIn } = useAuth();
+  const { profile: authProfile, loading: authLoading, authState, signIn } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -50,16 +50,9 @@ export default function DashboardClient() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // Sync profile state from auth context whenever it updates
-  useEffect(() => {
-    if (authProfile) {
-      setProfile((prev) => prev ?? (authProfile as unknown as Profile));
-    }
-  }, [authProfile]);
+  const currentProfile = profile ?? (authProfile as unknown as Profile | null);
 
   const load = useCallback(async () => {
-    setDataLoading(true);
-    setError(null);
     try {
       const [profileData, teamData, invitationData, challengeData] =
         await Promise.all([
@@ -83,15 +76,17 @@ export default function DashboardClient() {
   }, []);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (authState === "UNAUTHENTICATED") {
-      setProfile(null);
-      return;
-    }
-    void load();
+    if (authLoading || authState === "UNAUTHENTICATED") return;
+    void Promise.resolve().then(() => load());
   }, [authLoading, authState, load]);
 
+  const [respondingId, setRespondingId] = useState<string | null>(null);
+
   async function respond(invitation: Invitation, action: "ACCEPT" | "REJECT") {
+    if (respondingId) return;
+    setRespondingId(invitation.id);
+    setError(null);
+    setNotice(null);
     try {
       await apiFetch(`/api/invitations/${invitation.id}`, {
         method: "PATCH",
@@ -101,6 +96,8 @@ export default function DashboardClient() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to respond to invitation.");
+    } finally {
+      setRespondingId(null);
     }
   }
 
@@ -136,7 +133,7 @@ export default function DashboardClient() {
   }
 
   // 3. Authenticated but profile not yet created (onboarding)
-  if (!profile) {
+  if (!currentProfile) {
     return (
       <main className="mx-auto max-w-5xl px-6 py-12">
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">
@@ -167,11 +164,11 @@ export default function DashboardClient() {
     );
   }
 
-  const verifiedSkills = profile.skills.filter((skill) => skill.status === "VERIFIED");
-  const partiallyVerifiedSkills = profile.skills.filter(
+  const verifiedSkills = currentProfile.skills.filter((skill) => skill.status === "VERIFIED");
+  const partiallyVerifiedSkills = currentProfile.skills.filter(
     (skill) => skill.status === "PARTIALLY_VERIFIED"
   );
-  const claimedSkills = profile.skills.filter((skill) => skill.status === "CLAIMED");
+  const claimedSkills = currentProfile.skills.filter((skill) => skill.status === "CLAIMED");
 
   return (
     <main className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-6 py-10">
@@ -180,24 +177,40 @@ export default function DashboardClient() {
           PRAMAAN dashboard
         </p>
         <span className="text-xs text-stone-500">
-          Canonical identity: {profile.displayName}
+          Canonical identity: {currentProfile.displayName}
         </span>
       </div>
 
       <h1 className="mt-2 text-3xl font-semibold tracking-tight text-stone-900">
-        Welcome, {profile.displayName.split(" ")[0]}
+        Welcome, {currentProfile.displayName.split(" ")[0]}
       </h1>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
-        {profile.headline || "A verified skill portfolio backed by proctored assessments, transparent integrity telemetry, and traceable code evidence."}
+        {currentProfile.headline || "A verified skill portfolio backed by proctored assessments, transparent integrity telemetry, and traceable code evidence."}
       </p>
 
       {notice && (
-        <p className="mt-5 border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-          {notice}
-        </p>
+        <div className="mt-5 border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-center justify-between">
+          <span>{notice}</span>
+          <button
+            type="button"
+            onClick={() => setNotice(null)}
+            className="text-xs text-emerald-700 hover:text-emerald-950 underline ml-3"
+          >
+            Dismiss
+          </button>
+        </div>
       )}
       {error && (
-        <p className="mt-5 border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>
+        <div className="mt-5 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center justify-between">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="text-xs text-red-600 hover:text-red-900 underline ml-3"
+          >
+            Dismiss
+          </button>
+        </div>
       )}
 
       {/* SKILL VERIFICATION STATUS OVERVIEW */}
@@ -214,13 +227,13 @@ export default function DashboardClient() {
           <div className="flex gap-3">
             <Link
               href="/skills"
-              className="inline-flex h-10 items-center border border-stone-400 px-4 text-sm font-medium text-stone-800 hover:bg-stone-100"
+              className="inline-flex h-10 items-center border border-stone-400 px-4 text-sm font-medium text-stone-800 hover:bg-stone-100 active:bg-stone-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900"
             >
               Manage skills
             </Link>
             <Link
               href="/assessments"
-              className="inline-flex h-10 items-center border border-stone-900 bg-stone-900 px-4 text-sm font-medium text-stone-50 hover:bg-stone-800"
+              className="inline-flex h-10 items-center border border-stone-900 bg-stone-900 px-4 text-sm font-medium text-stone-50 hover:bg-stone-800 active:bg-stone-950 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900"
             >
               Take an assessment
             </Link>
@@ -228,7 +241,7 @@ export default function DashboardClient() {
         </div>
 
         <div className="mt-6 divide-y divide-stone-200 border-y border-stone-200">
-          {profile.skills.slice(0, 8).map((skill) => (
+          {currentProfile.skills.slice(0, 8).map((skill) => (
             <div key={skill.name} className="grid gap-2 py-4 sm:grid-cols-[1fr_auto_auto] sm:items-center">
               <div>
                 <p className="font-medium text-stone-900">{skill.name}</p>
@@ -254,7 +267,7 @@ export default function DashboardClient() {
               </span>
             </div>
           ))}
-          {profile.skills.length === 0 && (
+          {currentProfile.skills.length === 0 && (
             <p className="py-6 text-sm text-stone-600">
               No skills claimed yet. Add technical skills to your profile to begin taking assessments.
             </p>
@@ -273,7 +286,7 @@ export default function DashboardClient() {
             {challenges.map((challenge) => (
               <article
                 key={challenge.id}
-                className="flex flex-col justify-between gap-4 py-5 sm:flex-row sm:items-center"
+                className="flex flex-col justify-between gap-4 py-5 sm:flex-row sm:items-center hover:bg-stone-50/50 transition-colors px-2 -mx-2"
               >
                 <div>
                   <p className="font-medium text-stone-900">
@@ -287,7 +300,7 @@ export default function DashboardClient() {
                 </div>
                 <Link
                   href={`/challenge/${challenge.id}`}
-                  className="inline-flex h-9 items-center border border-stone-900 px-4 text-xs font-medium text-stone-900 hover:bg-stone-100"
+                  className="inline-flex h-9 items-center border border-stone-900 px-4 text-xs font-medium text-stone-900 hover:bg-stone-100 active:bg-stone-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900"
                 >
                   {challenge.state === "SENT" ? "Open challenge" : "View challenge result"}
                 </Link>
@@ -305,36 +318,43 @@ export default function DashboardClient() {
           </p>
           <h2 className="mt-2 text-2xl font-semibold text-stone-900">Choose where to build</h2>
           <div className="mt-5 divide-y divide-stone-200 border-y border-stone-200">
-            {invitations.map((invitation) => (
-              <article
-                key={invitation.id}
-                className="flex flex-col justify-between gap-4 py-5 sm:flex-row sm:items-center"
-              >
-                <div>
-                  <p className="font-medium text-stone-900">{invitation.team.name}</p>
-                  <p className="mt-1 text-sm text-stone-600">
-                    Looking for: {invitation.team.requiredSkills.join(", ")}
-                  </p>
-                  {invitation.message && (
-                    <p className="mt-1 text-xs text-stone-500 italic">“{invitation.message}”</p>
-                  )}
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => void respond(invitation, "REJECT")}
-                    className="h-9 border border-stone-400 px-3 text-xs font-medium text-stone-800 hover:bg-stone-100"
-                  >
-                    Decline
-                  </button>
-                  <button
-                    onClick={() => void respond(invitation, "ACCEPT")}
-                    className="h-9 border border-stone-900 bg-stone-900 px-4 text-xs font-medium text-stone-50 hover:bg-stone-800"
-                  >
-                    Accept
-                  </button>
-                </div>
-              </article>
-            ))}
+            {invitations.map((invitation) => {
+              const isResponding = respondingId === invitation.id;
+              return (
+                <article
+                  key={invitation.id}
+                  className="flex flex-col justify-between gap-4 py-5 sm:flex-row sm:items-center hover:bg-stone-50/50 transition-colors px-2 -mx-2"
+                >
+                  <div>
+                    <p className="font-medium text-stone-900">{invitation.team.name}</p>
+                    <p className="mt-1 text-sm text-stone-600">
+                      Looking for: {invitation.team.requiredSkills.join(", ")}
+                    </p>
+                    {invitation.message && (
+                      <p className="mt-1 text-xs text-stone-500 italic">“{invitation.message}”</p>
+                    )}
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      disabled={Boolean(respondingId)}
+                      onClick={() => void respond(invitation, "REJECT")}
+                      className="h-9 border border-stone-400 px-3 text-xs font-medium text-stone-800 hover:bg-stone-100 active:bg-stone-200 transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900"
+                    >
+                      {isResponding ? "Processing…" : "Decline"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={Boolean(respondingId)}
+                      onClick={() => void respond(invitation, "ACCEPT")}
+                      className="h-9 border border-stone-900 bg-stone-900 px-4 text-xs font-medium text-stone-50 hover:bg-stone-800 active:bg-stone-950 transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900"
+                    >
+                      {isResponding ? "Joining…" : "Accept"}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </section>
       )}

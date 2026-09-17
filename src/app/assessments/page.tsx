@@ -22,8 +22,6 @@ export default function AssessmentsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
     try {
       const body = await apiFetch<{ skills: Skill[] }>("/api/assessments");
       setProfile({ skills: body.skills });
@@ -41,16 +39,11 @@ export default function AssessmentsPage() {
   }, []);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (authState === "UNAUTHENTICATED") {
-      setLoading(false);
-      setProfile(null);
-      return;
-    }
-    void load();
+    if (authLoading || authState === "UNAUTHENTICATED") return;
+    void Promise.resolve().then(() => load());
   }, [authLoading, authState, load]);
 
-  if (authLoading || (loading && !profile)) {
+  if (authLoading || (authState === "AUTHENTICATED" && loading && !profile)) {
     return (
       <main className="mx-auto max-w-5xl px-6 py-10 text-sm text-stone-600">
         Loading assessments…

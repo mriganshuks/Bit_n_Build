@@ -59,12 +59,14 @@ export default function TeamWorkspaceClient() {
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [discovering, setDiscovering] = useState(false);
+  const [invitingId, setInvitingId] = useState<string | null>(null);
+  const [decidingId, setDecidingId] = useState<string | null>(null);
+  const [respondingInvitationId, setRespondingInvitationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
     try {
       const { teams } = await apiFetch<{ teams: Team[] }>("/api/teams");
       const { invitations: pendingInvitations } = await apiFetch<{
@@ -95,16 +97,15 @@ export default function TeamWorkspaceClient() {
   }, []);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (authState === "UNAUTHENTICATED") {
-      setLoading(false);
-      return;
-    }
-    void load();
+    if (authLoading || authState === "UNAUTHENTICATED") return;
+    void Promise.resolve().then(() => load());
   }, [authLoading, authState, load]);
 
   async function discover() {
-    if (!team) return;
+    if (!team || discovering) return;
+    setDiscovering(true);
+    setError(null);
+    setNotice(null);
     try {
       const { candidates: discovered } = await apiFetch<{ candidates: Candidate[] }>(
         `/api/teams/${team.id}/candidates`
@@ -112,14 +113,21 @@ export default function TeamWorkspaceClient() {
       setCandidates(discovered);
       if (!discovered.length) {
         setNotice("No available profiles currently match this team’s required skills.");
+      } else {
+        setNotice(`Discovered ${discovered.length} matched candidate${discovered.length === 1 ? "" : "s"}.`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to discover candidates.");
+    } finally {
+      setDiscovering(false);
     }
   }
 
   async function invite(candidate: Candidate) {
-    if (!team) return;
+    if (!team || invitingId) return;
+    setInvitingId(candidate.id);
+    setError(null);
+    setNotice(null);
     try {
       await apiFetch(`/api/teams/${team.id}/invitations`, {
         method: "POST",
@@ -131,10 +139,16 @@ export default function TeamWorkspaceClient() {
       setNotice(`Invitation sent to ${candidate.displayName}. They can respond from their dashboard.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to send invitation.");
+    } finally {
+      setInvitingId(null);
     }
   }
 
   async function decide(challenge: Challenge, decision: "ACCEPT" | "REJECT") {
+    if (decidingId) return;
+    setDecidingId(challenge.id);
+    setError(null);
+    setNotice(null);
     try {
       await apiFetch(`/api/challenges/${challenge.id}/decision`, {
         method: "POST",
@@ -148,10 +162,16 @@ export default function TeamWorkspaceClient() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to record that decision.");
+    } finally {
+      setDecidingId(null);
     }
   }
 
   async function respondToInvitation(invitationId: string, action: "ACCEPT" | "REJECT") {
+    if (respondingInvitationId) return;
+    setRespondingInvitationId(invitationId);
+    setError(null);
+    setNotice(null);
     try {
       await apiFetch(`/api/invitations/${invitationId}`, {
         method: "PATCH",
@@ -161,11 +181,13 @@ export default function TeamWorkspaceClient() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to respond to invitation.");
+    } finally {
+      setRespondingInvitationId(null);
     }
   }
 
   // 1. AUTH LOADING OR INITIAL DATA LOADING
-  if (authLoading || (loading && !team && !error)) {
+  if (authLoading || (authState === "AUTHENTICATED" && loading && !team && !error)) {
     return (
       <main className="mx-auto max-w-5xl px-6 py-12">
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">
@@ -270,16 +292,20 @@ export default function TeamWorkspaceClient() {
                   </div>
                   <div className="flex gap-3">
                     <button
+                      type="button"
+                      disabled={respondingInvitationId === inv.id}
                       onClick={() => void respondToInvitation(inv.id, "REJECT")}
-                      className="h-9 border border-stone-400 px-3 text-xs font-medium text-stone-800 hover:bg-stone-100"
+                      className="h-9 border border-stone-400 px-3 text-xs font-medium text-stone-800 hover:bg-stone-100 disabled:opacity-60 transition-colors"
                     >
-                      Decline
+                      {respondingInvitationId === inv.id ? "Declining…" : "Decline"}
                     </button>
                     <button
+                      type="button"
+                      disabled={respondingInvitationId === inv.id}
                       onClick={() => void respondToInvitation(inv.id, "ACCEPT")}
-                      className="h-9 border border-stone-900 bg-stone-900 px-4 text-xs font-medium text-stone-50 hover:bg-stone-800"
+                      className="h-9 border border-stone-900 bg-stone-900 px-4 text-xs font-medium text-stone-50 hover:bg-stone-800 disabled:opacity-60 transition-colors"
                     >
-                      Accept & Join
+                      {respondingInvitationId === inv.id ? "Joining…" : "Accept & Join"}
                     </button>
                   </div>
                 </article>
@@ -387,10 +413,12 @@ export default function TeamWorkspaceClient() {
             ))}
           </div>
           <button
+            type="button"
+            disabled={discovering}
             onClick={() => void discover()}
-            className="mt-5 h-10 border border-stone-900 bg-stone-900 px-4 text-sm font-medium text-stone-50 hover:bg-stone-800"
+            className="mt-5 h-10 border border-stone-900 bg-stone-900 px-4 text-sm font-medium text-stone-50 hover:bg-stone-800 disabled:opacity-60 transition-colors"
           >
-            Discover candidate matches
+            {discovering ? "Discovering matches…" : "Discover candidate matches"}
           </button>
         </div>
       </section>
@@ -407,7 +435,7 @@ export default function TeamWorkspaceClient() {
           </p>
           <div className="mt-6 divide-y divide-stone-200 border-y border-stone-200">
             {candidates.map((candidate) => (
-              <article key={candidate.id} className="py-6">
+              <article key={candidate.id} className="py-6 transition-colors hover:bg-stone-50/50">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="font-semibold text-stone-900">{candidate.displayName}</h3>
@@ -424,14 +452,16 @@ export default function TeamWorkspaceClient() {
                 </p>
                 <div className="mt-4 flex flex-wrap gap-4">
                   <button
+                    type="button"
+                    disabled={invitingId === candidate.id}
                     onClick={() => void invite(candidate)}
-                    className="text-sm font-medium underline underline-offset-4 hover:text-stone-700"
+                    className="text-sm font-medium underline underline-offset-4 hover:text-stone-700 disabled:opacity-60 transition-colors"
                   >
-                    Invite to team
+                    {invitingId === candidate.id ? "Inviting…" : "Invite to team"}
                   </button>
                   <Link
                     href={`/teammates/${candidate.id}?team=${team.id}`}
-                    className="text-sm font-medium underline underline-offset-4 hover:text-stone-700"
+                    className="text-sm font-medium underline underline-offset-4 hover:text-stone-700 transition-colors"
                   >
                     View profile & challenge
                   </Link>
@@ -470,16 +500,20 @@ export default function TeamWorkspaceClient() {
               {challenge.canDecide ? (
                 <div className="flex gap-3">
                   <button
+                    type="button"
+                    disabled={decidingId === challenge.id}
                     onClick={() => void decide(challenge, "REJECT")}
-                    className="h-9 border border-stone-400 px-3 text-xs font-medium text-stone-800 hover:bg-stone-100"
+                    className="h-9 border border-stone-400 px-3 text-xs font-medium text-stone-800 hover:bg-stone-100 disabled:opacity-60 transition-colors"
                   >
-                    Reject
+                    {decidingId === challenge.id ? "Updating…" : "Reject"}
                   </button>
                   <button
+                    type="button"
+                    disabled={decidingId === challenge.id}
                     onClick={() => void decide(challenge, "ACCEPT")}
-                    className="h-9 border border-stone-900 bg-stone-900 px-4 text-xs font-medium text-stone-50 hover:bg-stone-800"
+                    className="h-9 border border-stone-900 bg-stone-900 px-4 text-xs font-medium text-stone-50 hover:bg-stone-800 disabled:opacity-60 transition-colors"
                   >
-                    Accept to Team
+                    {decidingId === challenge.id ? "Accepting…" : "Accept to Team"}
                   </button>
                 </div>
               ) : (
@@ -503,9 +537,13 @@ export default function TeamWorkspaceClient() {
 export function CreateTeamClient({ hackathonId }: { hackathonId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (creating) return;
+    setCreating(true);
+    setError(null);
     const form = new FormData(event.currentTarget);
     try {
       await apiFetch("/api/teams", {
@@ -524,6 +562,8 @@ export function CreateTeamClient({ hackathonId }: { hackathonId: string }) {
       setCreated(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to create team.");
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -536,7 +576,7 @@ export function CreateTeamClient({ hackathonId }: { hackathonId: string }) {
         </p>
         <Link
           href="/team"
-          className="mt-6 inline-flex h-10 items-center border border-stone-900 bg-stone-900 px-4 text-sm font-medium text-stone-50 hover:bg-stone-800"
+          className="mt-6 inline-flex h-10 items-center border border-stone-900 bg-stone-900 px-4 text-sm font-medium text-stone-50 hover:bg-stone-800 transition-colors"
         >
           Open team workspace
         </Link>
@@ -561,7 +601,7 @@ export function CreateTeamClient({ hackathonId }: { hackathonId: string }) {
             required
             name="name"
             placeholder="e.g. Algorithmic Architects"
-            className="h-11 border border-stone-300 bg-white px-3"
+            className="h-11 border border-stone-300 bg-white px-3 focus:border-stone-900 focus:outline-none focus:ring-1 focus:ring-stone-900 transition-colors"
           />
         </label>
 
@@ -570,7 +610,7 @@ export function CreateTeamClient({ hackathonId }: { hackathonId: string }) {
           <textarea
             name="description"
             placeholder="Briefly describe the product or problem you plan to tackle."
-            className="min-h-24 border border-stone-300 bg-white p-3"
+            className="min-h-24 border border-stone-300 bg-white p-3 focus:border-stone-900 focus:outline-none focus:ring-1 focus:ring-stone-900 transition-colors"
           />
         </label>
 
@@ -580,7 +620,7 @@ export function CreateTeamClient({ hackathonId }: { hackathonId: string }) {
             required
             name="requiredSkills"
             placeholder="e.g. TypeScript, Next.js, Python, UI/UX"
-            className="h-11 border border-stone-300 bg-white px-3"
+            className="h-11 border border-stone-300 bg-white px-3 focus:border-stone-900 focus:outline-none focus:ring-1 focus:ring-stone-900 transition-colors"
           />
         </label>
 
@@ -593,14 +633,18 @@ export function CreateTeamClient({ hackathonId }: { hackathonId: string }) {
             min="2"
             max="12"
             type="number"
-            className="h-11 border border-stone-300 bg-white px-3"
+            className="h-11 border border-stone-300 bg-white px-3 focus:border-stone-900 focus:outline-none focus:ring-1 focus:ring-stone-900 transition-colors"
           />
         </label>
 
         {error && <p className="text-sm text-red-700">{error}</p>}
 
-        <button className="h-11 w-fit border border-stone-900 bg-stone-900 px-6 text-sm font-medium text-stone-50 hover:bg-stone-800">
-          Create team
+        <button
+          type="submit"
+          disabled={creating}
+          className="h-11 w-fit border border-stone-900 bg-stone-900 px-6 text-sm font-medium text-stone-50 hover:bg-stone-800 disabled:opacity-60 transition-colors"
+        >
+          {creating ? "Creating team…" : "Create team"}
         </button>
       </form>
     </main>

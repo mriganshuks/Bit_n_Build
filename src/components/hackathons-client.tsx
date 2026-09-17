@@ -22,10 +22,10 @@ export default function HackathonsClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const reload = useCallback(async () => {
-    setLoading(true);
-    setError(null);
     try {
       const body = await apiFetch<{ hackathons: Hackathon[] }>("/api/hackathons");
       setHackathons(body.hackathons);
@@ -37,25 +37,29 @@ export default function HackathonsClient() {
   }, []);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (authState === "UNAUTHENTICATED") {
-      setLoading(false);
-      return;
-    }
-    void reload();
+    if (authLoading || authState === "UNAUTHENTICATED") return;
+    void Promise.resolve().then(() => reload());
   }, [authLoading, authState, reload]);
 
   async function join(id: string) {
+    if (joiningId) return;
+    setJoiningId(id);
+    setError(null);
     try {
       await apiFetch(`/api/hackathons/${id}/join`, { method: "POST" });
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to join hackathon.");
+    } finally {
+      setJoiningId(null);
     }
   }
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (creating) return;
+    setCreating(true);
+    setError(null);
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     try {
@@ -74,10 +78,12 @@ export default function HackathonsClient() {
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to create hackathon.");
+    } finally {
+      setCreating(false);
     }
   }
 
-  if (authLoading || (loading && !hackathons.length && !error)) {
+  if (authLoading || (authState === "AUTHENTICATED" && loading && !hackathons.length && !error)) {
     return (
       <main className="mx-auto w-full max-w-5xl px-6 py-10 text-sm text-stone-600">
         Loading hackathons…
@@ -124,17 +130,36 @@ export default function HackathonsClient() {
         </button>
       </div>
 
-      {error && <p className="mt-5 border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {error && (
+        <div className="mt-5 flex items-center justify-between border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="text-xs text-red-700 hover:text-red-900"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {showForm && (
         <form onSubmit={create} className="mt-8 grid gap-4 border-y border-stone-300 py-6 md:grid-cols-2">
           <label className="grid gap-2 text-sm font-medium text-stone-900">
             Name
-            <input required name="name" className="h-10 border border-stone-300 bg-white px-3" />
+            <input
+              required
+              name="name"
+              className="h-10 border border-stone-300 bg-white px-3 focus:border-stone-900 focus:outline-none focus:ring-1 focus:ring-stone-900 transition-colors"
+            />
           </label>
           <label className="grid gap-2 text-sm font-medium text-stone-900">
             Location
-            <input required name="location" className="h-10 border border-stone-300 bg-white px-3" />
+            <input
+              required
+              name="location"
+              className="h-10 border border-stone-300 bg-white px-3 focus:border-stone-900 focus:outline-none focus:ring-1 focus:ring-stone-900 transition-colors"
+            />
           </label>
           <label className="grid gap-2 text-sm font-medium text-stone-900 md:col-span-2">
             Description
@@ -142,7 +167,7 @@ export default function HackathonsClient() {
               required
               minLength={10}
               name="description"
-              className="min-h-20 border border-stone-300 bg-white p-3"
+              className="min-h-20 border border-stone-300 bg-white p-3 focus:border-stone-900 focus:outline-none focus:ring-1 focus:ring-stone-900 transition-colors"
             />
           </label>
           <label className="grid gap-2 text-sm font-medium text-stone-900">
@@ -151,7 +176,7 @@ export default function HackathonsClient() {
               required
               type="datetime-local"
               name="startsAt"
-              className="h-10 border border-stone-300 bg-white px-3"
+              className="h-10 border border-stone-300 bg-white px-3 focus:border-stone-900 focus:outline-none focus:ring-1 focus:ring-stone-900 transition-colors"
             />
           </label>
           <label className="grid gap-2 text-sm font-medium text-stone-900">
@@ -160,11 +185,15 @@ export default function HackathonsClient() {
               required
               type="datetime-local"
               name="endsAt"
-              className="h-10 border border-stone-300 bg-white px-3"
+              className="h-10 border border-stone-300 bg-white px-3 focus:border-stone-900 focus:outline-none focus:ring-1 focus:ring-stone-900 transition-colors"
             />
           </label>
-          <button className="h-10 w-fit border border-stone-900 bg-stone-900 px-4 text-sm font-medium text-stone-50 hover:bg-stone-800">
-            Create and join
+          <button
+            type="submit"
+            disabled={creating}
+            className="h-10 w-fit border border-stone-900 bg-stone-900 px-4 text-sm font-medium text-stone-50 hover:bg-stone-800 disabled:opacity-60 transition-colors"
+          >
+            {creating ? "Creating…" : "Create and join"}
           </button>
         </form>
       )}
@@ -173,7 +202,7 @@ export default function HackathonsClient() {
         {hackathons.map((hackathon) => (
           <article
             key={hackathon.id}
-            className="flex flex-col justify-between gap-5 py-6 sm:flex-row sm:items-start"
+            className="flex flex-col justify-between gap-5 py-6 transition-colors hover:bg-stone-50/50 sm:flex-row sm:items-start"
           >
             <div>
               <h2 className="text-lg font-semibold text-stone-900">{hackathon.name}</h2>
@@ -190,16 +219,18 @@ export default function HackathonsClient() {
             {hackathon.joined ? (
               <Link
                 href={`/teams/new?hackathon=${hackathon.id}`}
-                className="inline-flex h-10 items-center border border-stone-900 bg-stone-900 px-4 text-sm font-medium text-stone-50 hover:bg-stone-800"
+                className="inline-flex h-10 items-center border border-stone-900 bg-stone-900 px-4 text-sm font-medium text-stone-50 hover:bg-stone-800 transition-colors"
               >
                 Create a team
               </Link>
             ) : (
               <button
+                type="button"
+                disabled={joiningId === hackathon.id}
                 onClick={() => void join(hackathon.id)}
-                className="h-10 border border-stone-900 px-4 text-sm font-medium text-stone-900 hover:bg-stone-100"
+                className="h-10 border border-stone-900 px-4 text-sm font-medium text-stone-900 hover:bg-stone-100 disabled:opacity-60 transition-colors"
               >
-                Join hackathon
+                {joiningId === hackathon.id ? "Joining…" : "Join hackathon"}
               </button>
             )}
           </article>

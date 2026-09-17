@@ -26,10 +26,11 @@ export default function ProfileClient() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [addingProject, setAddingProject] = useState(false);
+  const [addingEvidence, setAddingEvidence] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
     try {
       const { profile: loaded } = await apiFetch<{ profile: Profile }>("/api/profile");
       setProfile(loaded);
@@ -42,18 +43,16 @@ export default function ProfileClient() {
   }, []);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (authState === "UNAUTHENTICATED") {
-      setLoading(false);
-      setProfile(null);
-      return;
-    }
-    void load();
+    if (authLoading || authState === "UNAUTHENTICATED") return;
+    void Promise.resolve().then(() => load());
   }, [authLoading, authState, load]);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!profile) return;
+    if (!profile || savingProfile) return;
+    setSavingProfile(true);
+    setError(null);
+    setNotice(null);
     const form = new FormData(event.currentTarget);
     try {
       const { profile: updated } = await apiFetch<{ profile: Profile }>("/api/profile", {
@@ -68,15 +67,21 @@ export default function ProfileClient() {
         }),
       });
       setProfile(updated);
-      setNotice("Profile saved.");
+      setNotice("Profile saved successfully.");
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to save profile.");
+    } finally {
+      setSavingProfile(false);
     }
   }
 
   async function addProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (addingProject) return;
+    setAddingProject(true);
+    setError(null);
+    setNotice(null);
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     try {
@@ -94,15 +99,21 @@ export default function ProfileClient() {
       });
       setProfile(updated);
       formElement?.reset();
-      setNotice("Project evidence added.");
+      setNotice("Project evidence added successfully.");
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to add project.");
+    } finally {
+      setAddingProject(false);
     }
   }
 
   async function addEvidence(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (addingEvidence) return;
+    setAddingEvidence(true);
+    setError(null);
+    setNotice(null);
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     try {
@@ -127,7 +138,7 @@ export default function ProfileClient() {
     }
   }
 
-  if (authLoading || (loading && !profile)) {
+  if (authLoading || (authState === "AUTHENTICATED" && loading && !profile)) {
     return (
       <main className="mx-auto w-full max-w-5xl px-6 py-10 text-sm text-stone-600">
         Loading your profile…
@@ -190,12 +201,28 @@ export default function ProfileClient() {
       </p>
 
       {notice && (
-        <p className="mt-5 border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {notice}
-        </p>
+        <div className="mt-5 border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-center justify-between">
+          <span>{notice}</span>
+          <button
+            type="button"
+            onClick={() => setNotice(null)}
+            className="text-xs text-emerald-700 hover:text-emerald-950 underline ml-3"
+          >
+            Dismiss
+          </button>
+        </div>
       )}
       {error && (
-        <p className="mt-5 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+        <div className="mt-5 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center justify-between">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="text-xs text-red-600 hover:text-red-900 underline ml-3"
+          >
+            Dismiss
+          </button>
+        </div>
       )}
 
       <form onSubmit={save} className="mt-10 grid gap-5 border-t border-stone-300 pt-8 md:grid-cols-2">
@@ -205,7 +232,7 @@ export default function ProfileClient() {
             name="displayName"
             required
             defaultValue={profile.displayName}
-            className="h-11 border border-stone-300 bg-white px-3"
+            className="h-11 border border-stone-300 bg-white px-3 text-stone-900 hover:border-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition-all"
           />
         </label>
         <label className="grid gap-2 text-sm font-medium text-stone-900">
@@ -213,7 +240,7 @@ export default function ProfileClient() {
           <input
             name="headline"
             defaultValue={profile.headline}
-            className="h-11 border border-stone-300 bg-white px-3"
+            className="h-11 border border-stone-300 bg-white px-3 text-stone-900 hover:border-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition-all"
           />
         </label>
         <label className="grid gap-2 text-sm font-medium text-stone-900">
@@ -221,7 +248,7 @@ export default function ProfileClient() {
           <input
             name="location"
             defaultValue={profile.location}
-            className="h-11 border border-stone-300 bg-white px-3"
+            className="h-11 border border-stone-300 bg-white px-3 text-stone-900 hover:border-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition-all"
           />
         </label>
         <label className="grid gap-2 text-sm font-medium text-stone-900">
@@ -229,7 +256,7 @@ export default function ProfileClient() {
           <input
             name="education"
             defaultValue={profile.education}
-            className="h-11 border border-stone-300 bg-white px-3"
+            className="h-11 border border-stone-300 bg-white px-3 text-stone-900 hover:border-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition-all"
           />
         </label>
         <label className="grid gap-2 text-sm font-medium text-stone-900 md:col-span-2">
@@ -237,20 +264,25 @@ export default function ProfileClient() {
           <textarea
             name="bio"
             defaultValue={profile.bio}
-            className="min-h-28 border border-stone-300 bg-white p-3"
+            className="min-h-28 border border-stone-300 bg-white p-3 text-stone-900 hover:border-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition-all"
           />
         </label>
-        <label className="flex items-center gap-3 text-sm text-stone-900">
+        <label className="flex items-center gap-3 text-sm text-stone-900 cursor-pointer">
           <input
             type="checkbox"
             name="availableForTeams"
             defaultChecked={profile.availableForTeams}
+            className="accent-stone-900 h-4 w-4"
           />
           Available for team discovery
         </label>
         <div className="md:col-span-2">
-          <button className="h-11 w-fit border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800">
-            Save profile
+          <button
+            type="submit"
+            disabled={savingProfile}
+            className="h-11 w-fit border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800 active:bg-stone-950 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 disabled:opacity-50"
+          >
+            {savingProfile ? "Saving profile…" : "Save profile"}
           </button>
         </div>
       </form>
@@ -268,7 +300,7 @@ export default function ProfileClient() {
                     href={project.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-2 inline-block text-sm text-stone-800 underline hover:text-stone-950"
+                    className="mt-2 inline-block text-sm text-stone-800 underline hover:text-stone-950 transition-colors"
                   >
                     View project
                   </a>
@@ -283,29 +315,37 @@ export default function ProfileClient() {
             <input
               name="title"
               required
+              disabled={addingProject}
               placeholder="Project title"
-              className="h-10 border border-stone-300 bg-white px-3 text-sm text-stone-900"
+              className="h-10 border border-stone-300 bg-white px-3 text-sm text-stone-900 hover:border-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition-all disabled:opacity-60"
             />
             <textarea
               name="description"
               required
+              disabled={addingProject}
               minLength={10}
               placeholder="What did you build?"
-              className="min-h-20 border border-stone-300 bg-white p-3 text-sm text-stone-900"
+              className="min-h-20 border border-stone-300 bg-white p-3 text-sm text-stone-900 hover:border-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition-all disabled:opacity-60"
             />
             <input
               name="url"
               type="url"
+              disabled={addingProject}
               placeholder="Project URL (optional)"
-              className="h-10 border border-stone-300 bg-white px-3 text-sm text-stone-900"
+              className="h-10 border border-stone-300 bg-white px-3 text-sm text-stone-900 hover:border-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition-all disabled:opacity-60"
             />
             <input
               name="skills"
-              placeholder="Skills, comma-separated"
-              className="h-10 border border-stone-300 bg-white px-3 text-sm text-stone-900"
+              disabled={addingProject}
+              placeholder="Skills, comma-separated (e.g. React, TypeScript)"
+              className="h-10 border border-stone-300 bg-white px-3 text-sm text-stone-900 hover:border-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition-all disabled:opacity-60"
             />
-            <button className="h-10 w-fit border border-stone-900 px-4 text-sm hover:bg-stone-100">
-              Add project
+            <button
+              type="submit"
+              disabled={addingProject}
+              className="h-10 w-fit border border-stone-900 px-4 text-sm font-medium hover:bg-stone-100 active:bg-stone-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 disabled:opacity-50"
+            >
+              {addingProject ? "Adding project…" : "Add project"}
             </button>
           </form>
         </div>
@@ -323,7 +363,7 @@ export default function ProfileClient() {
                   href={item.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-2 inline-block text-sm text-stone-800 underline hover:text-stone-950"
+                  className="mt-2 inline-block text-sm text-stone-800 underline hover:text-stone-950 transition-colors"
                 >
                   Open submitted link
                 </a>
@@ -336,7 +376,8 @@ export default function ProfileClient() {
           <form onSubmit={addEvidence} className="mt-5 grid gap-3">
             <select
               name="source"
-              className="h-10 border border-stone-300 bg-white px-3 text-sm text-stone-900"
+              disabled={addingEvidence}
+              className="h-10 border border-stone-300 bg-white px-3 text-sm text-stone-900 hover:border-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition-all disabled:opacity-60"
             >
               <option value="GITHUB">GitHub</option>
               <option value="LEETCODE">LeetCode</option>
@@ -348,23 +389,30 @@ export default function ProfileClient() {
               name="url"
               type="url"
               required
+              disabled={addingEvidence}
               placeholder="Public evidence URL"
-              className="h-10 border border-stone-300 bg-white px-3 text-sm text-stone-900"
+              className="h-10 border border-stone-300 bg-white px-3 text-sm text-stone-900 hover:border-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition-all disabled:opacity-60"
             />
             <input
               name="description"
               required
+              disabled={addingEvidence}
               minLength={4}
               placeholder="Why this is relevant"
-              className="h-10 border border-stone-300 bg-white px-3 text-sm text-stone-900"
+              className="h-10 border border-stone-300 bg-white px-3 text-sm text-stone-900 hover:border-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition-all disabled:opacity-60"
             />
             <input
               name="skills"
+              disabled={addingEvidence}
               placeholder="Skills, comma-separated"
-              className="h-10 border border-stone-300 bg-white px-3 text-sm text-stone-900"
+              className="h-10 border border-stone-300 bg-white px-3 text-sm text-stone-900 hover:border-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent transition-all disabled:opacity-60"
             />
-            <button className="h-10 w-fit border border-stone-900 px-4 text-sm hover:bg-stone-100">
-              Add evidence
+            <button
+              type="submit"
+              disabled={addingEvidence}
+              className="h-10 w-fit border border-stone-900 px-4 text-sm font-medium hover:bg-stone-100 active:bg-stone-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 disabled:opacity-50"
+            >
+              {addingEvidence ? "Adding evidence…" : "Add evidence"}
             </button>
           </form>
         </div>

@@ -129,7 +129,7 @@ export default function ChallengeClient({ id }: { id: string }) {
     }
     setSubmitting(true);
     try {
-      const body = await apiFetch<{ result: unknown }>(`/api/challenges/${id}/submit`, {
+      await apiFetch<{ result: unknown }>(`/api/challenges/${id}/submit`, {
         method: "POST",
         body: JSON.stringify({ answers, timeout }),
       });
@@ -190,13 +190,137 @@ export default function ChallengeClient({ id }: { id: string }) {
   if (!challenge) return <main className="mx-auto max-w-3xl px-6 py-10 text-sm text-red-700">{error}</main>;
 
   if (challenge.state === "SENT") {
-    return <main className="mx-auto max-w-3xl px-6 py-10"><p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">Skill challenge</p><h1 className="mt-3 text-3xl font-semibold">{challenge.skill}</h1><p className="mt-4 text-sm leading-6 text-stone-600">Starting creates a server-enforced deadline. PRAMAAN asks for your camera and microphone so it can report browser-level integrity signals to the team; it does not record or store video or audio.</p>{error && <p className="mt-4 text-sm text-red-700">{error}</p>}<button onClick={() => void start()} className="mt-6 h-11 border border-stone-900 bg-stone-900 px-5 text-sm text-stone-50">Allow permissions and start</button></main>;
+    return (
+      <main className="mx-auto max-w-3xl px-6 py-10">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">Skill challenge</p>
+        <h1 className="mt-3 text-3xl font-semibold text-stone-900">{challenge.skill}</h1>
+        <p className="mt-4 text-sm leading-6 text-stone-600">
+          Starting creates a server-enforced deadline. PRAMAAN asks for your camera and microphone so it can report browser-level integrity signals to the team; it does not record or store video or audio.
+        </p>
+        {error && <p className="mt-4 text-sm text-red-700">{error}</p>}
+        <button
+          type="button"
+          onClick={() => void start()}
+          className="mt-6 h-11 border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800 transition-colors"
+        >
+          Allow permissions and start
+        </button>
+      </main>
+    );
   }
 
   if (challenge.state !== "IN_PROGRESS" || !challenge.questions) {
-    return <main className="mx-auto max-w-3xl px-6 py-10"><p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">Challenge result</p><h1 className="mt-3 text-3xl font-semibold">{challenge.skill}</h1><div className="mt-8 grid gap-5 border-y border-stone-300 py-7 sm:grid-cols-3"><div><p className="text-sm text-stone-600">Score</p><p className="mt-1 text-3xl font-semibold">{challenge.score ?? 0}%</p></div><div><p className="text-sm text-stone-600">Integrity</p><p className="mt-1 text-3xl font-semibold">{challenge.integrity?.score ?? "—"}</p></div><div><p className="text-sm text-stone-600">Risk</p><p className="mt-1 text-lg font-semibold">{challenge.integrity ? readable(challenge.integrity.riskLevel) : "—"}</p></div></div><p className="mt-5 text-sm text-stone-600">The team can use this result alongside the candidate profile and evidence. Integrity risk reflects browser signals only; it is not proof of cheating.</p><Link href="/team" className="mt-6 inline-block text-sm underline underline-offset-4">Return to team workspace</Link></main>;
+    return (
+      <main className="mx-auto max-w-3xl px-6 py-10">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">Challenge result</p>
+        <h1 className="mt-3 text-3xl font-semibold text-stone-900">{challenge.skill}</h1>
+        <div className="mt-8 grid gap-5 border-y border-stone-300 py-7 sm:grid-cols-3">
+          <div>
+            <p className="text-sm text-stone-600">Score</p>
+            <p className="mt-1 text-3xl font-semibold text-stone-900">{challenge.score ?? 0}%</p>
+          </div>
+          <div>
+            <p className="text-sm text-stone-600">Integrity</p>
+            <p className="mt-1 text-3xl font-semibold text-stone-900">{challenge.integrity?.score ?? "—"}</p>
+          </div>
+          <div>
+            <p className="text-sm text-stone-600">Risk</p>
+            <p className="mt-1 text-lg font-semibold text-stone-900">
+              {challenge.integrity ? readable(challenge.integrity.riskLevel) : "—"}
+            </p>
+          </div>
+        </div>
+        <p className="mt-5 text-sm text-stone-600">
+          The team can use this result alongside the candidate profile and evidence. Integrity risk reflects browser signals only; it is not proof of cheating.
+        </p>
+        <Link href="/team" className="mt-6 inline-block text-sm underline underline-offset-4 hover:text-stone-700 transition-colors">
+          Return to team workspace
+        </Link>
+      </main>
+    );
   }
 
   const question = challenge.questions[index];
-  return <main className="mx-auto max-w-3xl px-6 py-10"><header className="flex items-end justify-between gap-4 border-b border-stone-300 pb-5"><div><p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">Skill challenge</p><h1 className="mt-2 text-2xl font-semibold">{challenge.skill}</h1></div><p aria-live="polite" className="text-lg font-semibold">{time}</p></header><div className="mt-5 flex items-center justify-between gap-4 text-xs text-stone-600"><span>Integrity monitoring active · camera and microphone metadata only</span><video ref={videoRef} autoPlay muted playsInline className="h-16 w-24 border border-stone-300 bg-stone-100 object-cover" aria-label="Camera preview" /></div><p className="mt-6 text-sm text-stone-600">Question {index + 1} of {challenge.questions.length} · {question.topic}</p><h2 className="mt-4 text-xl font-medium leading-8">{question.prompt}</h2><fieldset className="mt-7 grid gap-3"><legend className="sr-only">Answer choices</legend>{question.options.map((option) => <label key={option.id} className="flex cursor-pointer gap-3 border border-stone-300 bg-white p-4 text-sm"><input type="radio" name={question.id} checked={answers[question.id] === option.id} onChange={() => setAnswers((value) => ({ ...value, [question.id]: option.id }))} /><span><strong>{option.id}.</strong> {option.text}</span></label>)}</fieldset>{error && <p className="mt-4 text-sm text-red-700">{error}</p>}<div className="mt-7 flex justify-between"><button disabled={index === 0} onClick={() => setIndex((value) => Math.max(0, value - 1))} className="h-10 border border-stone-400 px-4 text-sm disabled:opacity-40">Previous</button>{index === challenge.questions.length - 1 ? <button disabled={submitting} onClick={() => void submit()} className="h-10 border border-stone-900 bg-stone-900 px-4 text-sm text-stone-50">{submitting ? "Submitting…" : "Submit challenge"}</button> : <button onClick={() => setIndex((value) => Math.min(challenge.questions!.length - 1, value + 1))} className="h-10 border border-stone-900 px-4 text-sm">Next</button>}</div></main>;
+  return (
+    <main className="mx-auto max-w-3xl px-6 py-10">
+      <header className="flex items-end justify-between gap-4 border-b border-stone-300 pb-5">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">Skill challenge</p>
+          <h1 className="mt-2 text-2xl font-semibold text-stone-900">{challenge.skill}</h1>
+        </div>
+        <p aria-live="polite" className="text-lg font-semibold text-stone-900">{time}</p>
+      </header>
+      <div className="mt-5 flex items-center justify-between gap-4 text-xs text-stone-600">
+        <span>Integrity monitoring active · camera and microphone metadata only</span>
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          className="h-16 w-24 border border-stone-300 bg-stone-100 object-cover"
+          aria-label="Camera preview"
+        />
+      </div>
+      <p className="mt-6 text-sm text-stone-600">
+        Question {index + 1} of {challenge.questions.length} · {question.topic}
+      </p>
+      <h2 className="mt-4 text-xl font-medium leading-8 text-stone-900">{question.prompt}</h2>
+      <fieldset className="mt-7 grid gap-3">
+        <legend className="sr-only">Answer choices</legend>
+        {question.options.map((option) => {
+          const isSelected = answers[question.id] === option.id;
+          return (
+            <label
+              key={option.id}
+              className={`flex cursor-pointer gap-3 border p-4 text-sm transition-colors ${
+                isSelected
+                  ? "border-stone-900 bg-stone-100 ring-1 ring-stone-900 font-medium text-stone-950"
+                  : "border-stone-300 bg-white hover:border-stone-500 hover:bg-stone-50 text-stone-900"
+              }`}
+            >
+              <input
+                type="radio"
+                name={question.id}
+                checked={isSelected}
+                onChange={() => setAnswers((value) => ({ ...value, [question.id]: option.id }))}
+                className="mt-0.5"
+              />
+              <span>
+                <strong>{option.id}.</strong> {option.text}
+              </span>
+            </label>
+          );
+        })}
+      </fieldset>
+      {error && <p className="mt-4 text-sm text-red-700">{error}</p>}
+      <div className="mt-7 flex justify-between">
+        <button
+          type="button"
+          disabled={index === 0}
+          onClick={() => setIndex((value) => Math.max(0, value - 1))}
+          className="h-10 border border-stone-400 px-4 text-sm font-medium text-stone-800 hover:bg-stone-100 disabled:opacity-40 transition-colors"
+        >
+          Previous
+        </button>
+        {index === challenge.questions.length - 1 ? (
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => void submit()}
+            className="h-10 border border-stone-900 bg-stone-900 px-4 text-sm font-medium text-stone-50 hover:bg-stone-800 disabled:opacity-60 transition-colors"
+          >
+            {submitting ? "Submitting…" : "Submit challenge"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setIndex((value) => Math.min(challenge.questions!.length - 1, value + 1))}
+            className="h-10 border border-stone-900 bg-stone-900 px-4 text-sm font-medium text-stone-50 hover:bg-stone-800 transition-colors"
+          >
+            Next
+          </button>
+        )}
+      </div>
+    </main>
+  );
 }
