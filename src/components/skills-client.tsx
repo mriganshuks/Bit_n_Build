@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, ClientApiError } from "@/lib/api-client";
 
 type Skill = {
   name: string;
@@ -23,7 +23,9 @@ export default function SkillsClient() {
   const { authState, loading: authLoading, signIn } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -51,29 +53,44 @@ export default function SkillsClient() {
 
   async function add(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitting) return;
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
+    const skillInput = form.get("name");
+    if (!skillInput || typeof skillInput !== "string" || !skillInput.trim()) return;
+
+    setSubmitting(true);
+    setError(null);
+    setNotice(null);
+
     try {
-      const body = await apiFetch<{ profile: Profile }>("/api/profile/skills", {
+      const body = await apiFetch<{ profile: Profile; message?: string }>("/api/profile/skills", {
         method: "POST",
-        body: JSON.stringify({ name: form.get("name") }),
+        body: JSON.stringify({ name: skillInput.trim() }),
       });
       setProfile(body.profile);
-      formElement?.reset();
-      setError(null);
+      formElement.reset();
+      setNotice(body.message ?? "Skill added successfully.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to add skill.");
+      if (err instanceof ClientApiError && (err.code === "SKILL_EXISTS" || err.status === 409)) {
+        setError("Skill already acquired.");
+      } else {
+        setError(err instanceof Error ? err.message : "Unable to add skill.");
+      }
+    } finally {
+      setSubmitting(false);
     }
   }
 
   async function remove(name: string) {
+    setError(null);
+    setNotice(null);
     try {
       const body = await apiFetch<{ profile: Profile }>(
         `/api/profile/skills?name=${encodeURIComponent(name)}`,
         { method: "DELETE" }
       );
       setProfile(body.profile);
-      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to remove skill.");
     }
@@ -139,7 +156,16 @@ export default function SkillsClient() {
         Self-claims remain claims. Only assessment results and supporting evidence can change a verification status.
       </p>
 
-      {error && <p className="mt-4 text-sm text-red-700">{error}</p>}
+      {notice && (
+        <div className="mt-4 border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">
+          {notice}
+        </div>
+      )}
+      {error && (
+        <div className="mt-4 border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       <div className="mt-8 divide-y divide-stone-200 border-y border-stone-200">
         {profile.skills.map((skill) => (
@@ -181,12 +207,17 @@ export default function SkillsClient() {
           id="skill-name"
           name="name"
           required
-          minLength={2}
+          minLength={1}
+          disabled={submitting}
           placeholder="e.g. JavaScript"
-          className="h-11 min-w-0 flex-1 border border-stone-300 bg-white px-3 text-stone-900"
+          className="h-11 min-w-0 flex-1 border border-stone-300 bg-white px-3 text-stone-900 disabled:opacity-60"
         />
-        <button className="h-11 border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800">
-          Add skill
+        <button
+          type="submit"
+          disabled={submitting}
+          className="h-11 border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800 disabled:opacity-50"
+        >
+          {submitting ? "Adding…" : "Add skill"}
         </button>
       </form>
     </main>

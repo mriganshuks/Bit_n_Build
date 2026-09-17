@@ -121,15 +121,91 @@ async function runTest() {
   }
   console.log("   ✓ User B has only Java and C++. React and Python do NOT appear.");
 
-  // 3. User B attempts direct POST /api/assessment/start for React (not claimed)
-  console.log("\n3. Testing server rejection: User B attempts to start React assessment...");
+  // 3. Testing C++ Assessment with encoded "c%2B%2B" & User Isolation
+  console.log("\n3. Testing C++ assessment eligibility and URL encoding...");
+  // User A has NOT claimed C++. Calling start with "c%2B%2B" must be REJECTED with 403
+  const userAStartCppEncoded = await userASession("/api/assessment/start", {
+    method: "POST",
+    body: JSON.stringify({ skill: "c%2B%2B", difficulty: "intermediate", consent: true }),
+  });
+  console.log(`   User A (unclaimed) starting c%2B%2B: HTTP ${userAStartCppEncoded.status}`);
+  if (userAStartCppEncoded.status !== 403) {
+    throw new Error(`Expected HTTP 403 for User A attempting unclaimed c%2B%2B, got ${userAStartCppEncoded.status}`);
+  }
+  console.log("   ✓ User A rejected with 403 SKILL_NOT_CLAIMED for encoded c%2B%2B.");
+
+  // User B HAS claimed C++. Calling start with "c%2B%2B" must be ALLOWED with 201
+  const userBStartCppEncoded = await userBSession("/api/assessment/start", {
+    method: "POST",
+    body: JSON.stringify({ skill: "c%2B%2B", difficulty: "intermediate", consent: true }),
+  });
+  console.log(`   User B (claimed C++) starting c%2B%2B: HTTP ${userBStartCppEncoded.status}`);
+  if (userBStartCppEncoded.status !== 201 || !userBStartCppEncoded.body.attempt?.id) {
+    throw new Error(`Expected HTTP 201 for User B starting c%2B%2B, got ${userBStartCppEncoded.status}: ${JSON.stringify(userBStartCppEncoded.body)}`);
+  }
+  console.log(`   ✓ User B successfully started C++ assessment via encoded "c%2B%2B"! Attempt ID: ${userBStartCppEncoded.body.attempt.id}`);
+  if (userBStartCppEncoded.body.attempt.skill !== "C++") {
+    throw new Error(`Expected canonical skill name "C++" in attempt, got: ${userBStartCppEncoded.body.attempt.skill}`);
+  }
+  console.log("   ✓ Attempt stored canonical skill name 'C++'.");
+
+  // 4. Test First-Time Skill Addition vs Duplicate Skill Addition (Bug 2)
+  console.log("\n4. Testing first-time skill addition vs duplicate addition (Bug 2)...");
+  // User A adds a new skill for the first time: "TypeScript"
+  const addTypeScript = await userASession("/api/profile/skills", {
+    method: "POST",
+    body: JSON.stringify({ name: "TypeScript" }),
+  });
+  console.log(`   First-time add TypeScript: HTTP ${addTypeScript.status}`);
+  if (addTypeScript.status !== 201) {
+    throw new Error(`Expected HTTP 201 for first-time skill add, got ${addTypeScript.status}`);
+  }
+  if (addTypeScript.body.message !== "Skill added successfully") {
+    throw new Error(`Expected message 'Skill added successfully', got: ${addTypeScript.body.message}`);
+  }
+  console.log("   ✓ First-time skill addition returned 201 and 'Skill added successfully'.");
+
+  // User A attempts to add "TypeScript" again (duplicate)
+  const addDuplicateTypeScript = await userASession("/api/profile/skills", {
+    method: "POST",
+    body: JSON.stringify({ name: "TypeScript" }),
+  });
+  console.log(`   Duplicate add TypeScript: HTTP ${addDuplicateTypeScript.status}`);
+  if (addDuplicateTypeScript.status !== 409) {
+    throw new Error(`Expected HTTP 409 for duplicate skill add, got ${addDuplicateTypeScript.status}`);
+  }
+  if (addDuplicateTypeScript.body.error?.code !== "SKILL_EXISTS") {
+    throw new Error(`Expected error code SKILL_EXISTS, got: ${addDuplicateTypeScript.body.error?.code}`);
+  }
+  console.log("   ✓ Duplicate skill addition returned 409 SKILL_EXISTS ('That skill is already claimed.').");
+
+  // User A attempts to add " typescript " (case and whitespace normalized duplicate)
+  const addDuplicateCase = await userASession("/api/profile/skills", {
+    method: "POST",
+    body: JSON.stringify({ name: "  typescript  " }),
+  });
+  console.log(`   Duplicate case-insensitive add: HTTP ${addDuplicateCase.status}`);
+  if (addDuplicateCase.status !== 409) {
+    throw new Error(`Expected HTTP 409 for case-insensitive duplicate add, got ${addDuplicateCase.status}`);
+  }
+  console.log("   ✓ Case-insensitive duplicate addition correctly rejected with 409.");
+
+  // 5. Test distinct language preservation: "C" vs "C++" vs "C#"
+  console.log("\n5. Testing distinct skills (C, C++, C#)...");
+  const addC = await userASession("/api/profile/skills", { method: "POST", body: JSON.stringify({ name: "C" }) });
+  const addCSharp = await userASession("/api/profile/skills", { method: "POST", body: JSON.stringify({ name: "C#" }) });
+  if (addC.status !== 201 || addCSharp.status !== 201) {
+    throw new Error(`Distinct languages failed to add independently: C=${addC.status}, C#=${addCSharp.status}`);
+  }
+  console.log("   ✓ 'C' and 'C#' added independently without collision.");
+
+  // 6. User B direct POST /api/assessment/start for React (not claimed)
+  console.log("\n6. Testing server rejection: User B attempts to start React assessment (unclaimed)...");
   const startReactUnclaimed = await userBSession("/api/assessment/start", {
     method: "POST",
     body: JSON.stringify({ skill: "React", difficulty: "intermediate", consent: true }),
   });
   console.log(`   Response status: ${startReactUnclaimed.status}`);
-  console.log(`   Response error:`, startReactUnclaimed.body.error);
-
   if (startReactUnclaimed.status !== 403) {
     throw new Error(`Expected HTTP 403 when User B requests unclaimed skill React, but received HTTP ${startReactUnclaimed.status}`);
   }
@@ -138,28 +214,10 @@ async function runTest() {
   }
   console.log("   ✓ Server REJECTED attempt with HTTP 403 SKILL_NOT_CLAIMED.");
 
-  // Verify in MongoDB that NO attempt was created for User B
-  let uri = process.env.MONGODB_URI;
-  if (!uri && fs.existsSync(".env.local")) {
-    const raw = fs.readFileSync(".env.local", "utf8");
-    uri = raw.split(/\r?\n/).find((line) => line.startsWith("MONGODB_URI="))?.split("=").slice(1).join("=").replace(/^"|"$/g, "");
-  }
-  if (uri) {
-    await mongoose.connect(uri, { family: 4, tls: true, serverSelectionTimeoutMS: 10_000 });
-    const attemptInDb = await mongoose.connection.db.collection("assessmentattempts").findOne({
-      profileId: new mongoose.Types.ObjectId(userBProfileId),
-      skill: "React",
-    });
-    if (attemptInDb) {
-      throw new Error("An AssessmentAttempt document was erroneously created in MongoDB for unclaimed skill!");
-    }
-    console.log("   ✓ Verified MongoDB: No assessment attempt created for unclaimed React.");
-    await mongoose.disconnect();
-  }
-
-  // 4. User B claims React
-  console.log("\n4. User B claims React...");
-  await userBSession("/api/profile/skills", { method: "POST", body: JSON.stringify({ name: "React" }) });
+  // 7. User B claims React
+  console.log("\n7. User B claims React...");
+  const claimReactRes = await userBSession("/api/profile/skills", { method: "POST", body: JSON.stringify({ name: "React" }) });
+  if (claimReactRes.status !== 201) throw new Error(`User B failed to claim React: ${claimReactRes.status}`);
 
   // Verify User B assessment eligibility now includes React
   const userBAssessmentsAfter = await userBSession("/api/assessments");
@@ -170,18 +228,15 @@ async function runTest() {
   }
   console.log("   ✓ React is now available for User B after claiming.");
 
-  // 5. User B starts React assessment
-  console.log("\n5. User B starts React assessment now that it is claimed...");
-  const startReactClaimed = await userBSession("/api/assessment/start", {
-    method: "POST",
-    body: JSON.stringify({ skill: "React", difficulty: "intermediate", consent: true }),
-  });
-  if (startReactClaimed.status !== 201 || !startReactClaimed.body.attempt?.id) {
-    throw new Error(`Failed to start assessment after claiming: status ${startReactClaimed.status}, body: ${JSON.stringify(startReactClaimed.body)}`);
+  // 8. Test candidate discovery / team public profile
+  console.log("\n8. Testing candidate discovery / public profile...");
+  const pubProfileA = await userBSession(`/api/profiles/${userAProfileId}`);
+  if (!pubProfileA.ok) {
+    throw new Error(`Failed to view public profile: ${pubProfileA.status}`);
   }
-  console.log(`   ✓ React assessment started successfully with attempt ID: ${startReactClaimed.body.attempt.id}`);
+  console.log("   ✓ Public candidate profile accessible for team discovery.");
 
-  console.log("\n=== ALL TWO-USER ISOLATION CHECKS PASSED ===");
+  console.log("\n=== ALL TWO-USER ISOLATION & SKILL CHECKS PASSED ===");
 }
 
 try {

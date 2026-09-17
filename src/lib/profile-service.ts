@@ -3,9 +3,10 @@ import { z } from "zod";
 import { User } from "@/models/User";
 import { ApiError, isDuplicateKeyError } from "@/lib/api";
 import { serializeProfile } from "@/lib/serializers";
+import { canonicalSkillDisplay, normalizeSkillName } from "@/lib/skills";
 
 const urlSchema = z.string().url().max(500);
-const skillName = z.string().trim().min(2).max(80);
+const skillName = z.string().trim().min(1).max(80);
 export const createProfileSchema = z.object({
   displayName: z.string().trim().min(2).max(80),
   email: z.string().trim().email().max(254),
@@ -43,7 +44,6 @@ export async function createProfile(input: z.infer<typeof createProfileSchema>) 
     const existingByEmail = await User.findOne({ email: input.email.toLowerCase() });
     if (existingByEmail) {
       if (input.firebaseUid) existingByEmail.firebaseUid = input.firebaseUid;
-      if (input.photoUrl && !existingByEmail.photoUrl) existingByEmail.photoUrl = input.photoUrl;
       await existingByEmail.save();
       return serializeProfile(existingByEmail);
     }
@@ -71,9 +71,11 @@ export async function updateOwnProfile(profileId: string, input: z.infer<typeof 
 export async function addSkill(profileId: string, name: string) {
   const profile = await User.findById(validId(profileId));
   if (!profile) throw new ApiError("Profile not found.", 404, "PROFILE_NOT_FOUND");
-  const normalizedName = name.trim().toLowerCase();
-  if (profile.skills.some((skill) => skill.normalizedName === normalizedName)) throw new ApiError("That skill is already claimed.", 409, "SKILL_EXISTS");
-  profile.skills.push({ name: name.trim(), normalizedName, status: "CLAIMED", evidenceCount: 0 });
+  const normalizedName = normalizeSkillName(name);
+  if (profile.skills.some((skill) => normalizeSkillName(skill.normalizedName || skill.name) === normalizedName)) {
+    throw new ApiError("That skill is already claimed.", 409, "SKILL_EXISTS");
+  }
+  profile.skills.push({ name: canonicalSkillDisplay(name), normalizedName, status: "CLAIMED", evidenceCount: 0 });
   await profile.save();
   return serializeProfile(profile);
 }
@@ -81,8 +83,8 @@ export async function addSkill(profileId: string, name: string) {
 export async function removeSkill(profileId: string, name: string) {
   const profile = await User.findById(validId(profileId));
   if (!profile) throw new ApiError("Profile not found.", 404, "PROFILE_NOT_FOUND");
-  const normalizedName = name.trim().toLowerCase();
-  const removeIndex = profile.skills.findIndex((skill) => skill.normalizedName === normalizedName);
+  const normalizedName = normalizeSkillName(name);
+  const removeIndex = profile.skills.findIndex((skill) => normalizeSkillName(skill.normalizedName || skill.name) === normalizedName);
   if (removeIndex < 0) throw new ApiError("Skill not found.", 404, "SKILL_NOT_FOUND");
   profile.skills.splice(removeIndex, 1);
   await profile.save();
@@ -102,10 +104,10 @@ export async function addEvidence(profileId: string, input: z.infer<typeof evide
   if (!profile) throw new ApiError("Profile not found.", 404, "PROFILE_NOT_FOUND");
   profile.evidence.push(input);
   for (const claimedName of input.skills) {
-    const normalizedName = claimedName.toLowerCase();
-    const existing = profile.skills.find((skill) => skill.normalizedName === normalizedName);
+    const normalizedName = normalizeSkillName(claimedName);
+    const existing = profile.skills.find((skill) => normalizeSkillName(skill.normalizedName || skill.name) === normalizedName);
     if (existing) existing.evidenceCount += 1;
-    else profile.skills.push({ name: claimedName, normalizedName, status: "PARTIALLY_VERIFIED", evidenceCount: 1 });
+    else profile.skills.push({ name: canonicalSkillDisplay(claimedName), normalizedName, status: "PARTIALLY_VERIFIED", evidenceCount: 1 });
   }
   await profile.save();
   return serializeProfile(profile);

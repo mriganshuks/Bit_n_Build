@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { apiFetch } from "@/lib/api-client";
+import { canonicalSkillDisplay, normalizeSkillName } from "@/lib/skills";
 /* eslint-disable react-hooks/exhaustive-deps -- assessment lifecycle handlers intentionally bind to one active attempt */
 
 type Question = { id: string; prompt: string; topic: string; options: Array<{ id: "A" | "B" | "C" | "D"; text: string }> };
@@ -14,6 +15,8 @@ const readable = (value: string) => value.replaceAll("_", " ").toLowerCase().rep
 
 export default function AssessmentClient({ skill }: Props) {
   const { authState } = useAuth();
+  const displaySkill = useMemo(() => canonicalSkillDisplay(skill), [skill]);
+  const normalizedSkill = useMemo(() => normalizeSkillName(skill), [skill]);
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const [answers, setAnswers] = useState<Record<string, "A" | "B" | "C" | "D">>({});
   const [code, setCode] = useState("");
@@ -31,7 +34,7 @@ export default function AssessmentClient({ skill }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const eventTimes = useRef<Record<string, number>>({});
   const attemptRef = useRef<string | null>(null);
-  const storageKey = `pramaan_assessment_${skill.trim().toLowerCase()}`;
+  const storageKey = `pramaan_assessment_${normalizedSkill}`;
 
   const stopMedia = () => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -86,7 +89,7 @@ export default function AssessmentClient({ skill }: Props) {
       await connectMedia();
       const body = await apiFetch<{ attempt: Attempt }>("/api/assessment/start", {
         method: "POST",
-        body: JSON.stringify({ skill, difficulty: "intermediate", consent: true })
+        body: JSON.stringify({ skill: displaySkill, difficulty: "intermediate", consent: true })
       });
       const newAttempt = body.attempt;
       attemptRef.current = newAttempt.id;
@@ -143,9 +146,9 @@ export default function AssessmentClient({ skill }: Props) {
       try {
         const body = await apiFetch<{ skills: Array<{ name: string; normalizedName?: string }> }>("/api/assessments");
         if (isCancelled) return;
-        const norm = skill.trim().toLowerCase();
+        const norm = normalizedSkill;
         const found = (body.skills ?? []).some(
-          (s) => (s.normalizedName || s.name.trim().toLowerCase()) === norm
+          (s) => normalizeSkillName(s.normalizedName || s.name) === norm
         );
         setSkillEligible(found);
       } catch {
@@ -158,7 +161,7 @@ export default function AssessmentClient({ skill }: Props) {
         const savedId = sessionStorage.getItem(storageKey);
         const queryUrl = savedId
           ? `/api/assessment/attempt?id=${encodeURIComponent(savedId)}`
-          : `/api/assessment/attempt?skill=${encodeURIComponent(skill)}`;
+          : `/api/assessment/attempt?skill=${encodeURIComponent(displaySkill)}`;
 
         const body = await apiFetch<{ attempt?: Attempt }>(queryUrl);
         if (isCancelled) return;
@@ -286,7 +289,7 @@ export default function AssessmentClient({ skill }: Props) {
     return (
       <main className="mx-auto w-full max-w-3xl px-6 py-10">
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">Assessment consent</p>
-        <h1 className="mt-3 text-3xl font-semibold">Prepare for {skill}</h1>
+        <h1 className="mt-3 text-3xl font-semibold">Prepare for {displaySkill}</h1>
         <p className="mt-4 text-sm leading-6 text-stone-600">
           PRAMAAN uses camera and microphone access exclusively for live local status verification and recording auditable telemetry events (such as device disconnects or permission loss). Video and audio streams are never recorded, saved, or uploaded to any server.
         </p>
@@ -300,13 +303,13 @@ export default function AssessmentClient({ skill }: Props) {
           <div className="mt-5 border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
             <p className="font-semibold">Skill not claimed on your profile</p>
             <p className="mt-1">
-              You must claim &apos;{skill}&apos; on your profile before you can start an assessment for it.
+              You must claim &apos;{displaySkill}&apos; on your profile before you can start an assessment for it.
             </p>
             <Link
               href="/skills"
               className="mt-3 inline-flex h-9 items-center border border-amber-900 bg-amber-900 px-4 text-xs font-medium text-amber-50 hover:bg-amber-800"
             >
-              Go to Skills &amp; Claim {skill}
+              Go to Skills &amp; Claim {displaySkill}
             </Link>
           </div>
         )}
