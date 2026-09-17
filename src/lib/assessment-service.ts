@@ -31,8 +31,17 @@ export function publicAttempt(attempt: {
 
 export async function createAssessmentAttempt(input: { profileId: string; skill: string; difficulty: Difficulty }) {
   const profileId = objectId(input.profileId);
-  const profile = await User.findById(profileId).select("_id").lean();
+  const profile = await User.findById(profileId).select("_id skills").lean();
   if (!profile) throw new ApiError("Create a profile before starting an assessment.", 404, "PROFILE_NOT_FOUND");
+  const skill = input.skill.trim().replace(/\s+/g, " ");
+  if (skill.length < 2 || skill.length > 80) throw new ApiError("Choose a valid skill.", 400, "INVALID_SKILL");
+  const normalized = skill.toLowerCase();
+  const claimedSkill = profile.skills?.find(
+    (s) => s.normalizedName === normalized || s.name.trim().toLowerCase() === normalized
+  );
+  if (!claimedSkill) {
+    throw new ApiError("You must claim this skill on your profile before starting an assessment.", 403, "SKILL_NOT_CLAIMED");
+  }
   const now = new Date();
   await AssessmentAttempt.updateMany(
     { profileId, state: "IN_PROGRESS", expiresAt: { $lte: now } },
@@ -40,14 +49,12 @@ export async function createAssessmentAttempt(input: { profileId: string; skill:
   );
   const activeAttempt = await AssessmentAttempt.exists({ profileId, state: "IN_PROGRESS", expiresAt: { $gt: now } });
   if (activeAttempt) throw new ApiError("Finish or resume your active assessment before starting another one.", 409, "ACTIVE_ASSESSMENT_EXISTS");
-  const skill = input.skill.trim().replace(/\s+/g, " ");
-  if (skill.length < 2 || skill.length > 80) throw new ApiError("Choose a valid skill.", 400, "INVALID_SKILL");
   const prior = await AssessmentAttempt.find({ profileId, skill: new RegExp(`^${skill.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") }).select("questions.fingerprint").sort({ createdAt: -1 }).limit(5).lean();
   const previousFingerprints = prior.flatMap((attempt) => attempt.questions.map((question) => question.fingerprint));
-  const generated = await generateAssessment({ skill, difficulty: input.difficulty, count: 5, previousFingerprints });
+  const generated = await generateAssessment({ skill: claimedSkill.name, difficulty: input.difficulty, count: 5, previousFingerprints });
   const startedAt = now;
   const expiresAt = new Date(startedAt.getTime() + ASSESSMENT_DURATION_SECONDS * 1000);
-  const attempt = await AssessmentAttempt.create({ profileId, skill, difficulty: input.difficulty, state: "IN_PROGRESS", startedAt, expiresAt, questions: generated.questions, codingProblem: generated.codingProblem, generatedBy: generated.generatedBy, generationNotice: generated.notice });
+  const attempt = await AssessmentAttempt.create({ profileId, skill: claimedSkill.name, difficulty: input.difficulty, state: "IN_PROGRESS", startedAt, expiresAt, questions: generated.questions, codingProblem: generated.codingProblem, generatedBy: generated.generatedBy, generationNotice: generated.notice });
   return publicAttempt(attempt);
 }
 
@@ -58,10 +65,18 @@ export async function getAssessmentAttempt(profileId: string, attemptId: string)
 }
 
 export async function getActiveAssessmentAttempt(profileId: string, skill: string) {
+  const profile = await User.findById(objectId(profileId)).select("skills").lean();
+  if (!profile) return null;
+  const normalized = skill.trim().toLowerCase();
+  const claimed = profile.skills?.some(
+    (s) => s.normalizedName === normalized || s.name.trim().toLowerCase() === normalized
+  );
+  if (!claimed) return null;
+
   const now = new Date();
   const attempt = await AssessmentAttempt.findOne({
     profileId: objectId(profileId),
-    skill: new RegExp(`^${skill.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"),
+    skill: new RegExp(`^${skill.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"),
     state: "IN_PROGRESS",
     expiresAt: { $gt: now },
   }).sort({ createdAt: -1 }).lean();
@@ -104,17 +119,16 @@ export async function submitAssessmentAttempt(input: { profileId: string; attemp
   const profile = await User.findById(profileObjectId).select("skills evidence");
   if (!profile) throw new ApiError("Profile not found.", 404, "PROFILE_NOT_FOUND");
   const normalized = attempt.skill.toLowerCase();
-  const skill = profile.skills.find((item) => item.normalizedName === normalized);
-  const evidenceCount = (skill?.evidenceCount ?? 0) + profile.evidence.filter((entry) => entry.skills.some((name) => name.toLowerCase() === normalized)).length;
-  const verificationStatus = verificationFor({ score: finalScore, integrityRisk: integrity.riskLevel, evidenceCount });
-  if (skill) {
-    skill.assessmentScore = Math.max(skill.assessmentScore ?? 0, finalScore);
-    skill.status = verificationStatus;
-    skill.evidenceCount = evidenceCount;
-    skill.lastAssessmentAt = new Date();
-  } else {
-    profile.skills.push({ name: attempt.skill, normalizedName: normalized, status: verificationStatus, assessmentScore: finalScore, evidenceCount, lastAssessmentAt: new Date() });
+  const skill = profile.skills.find((item) => item.normalizedName === normalized || item.name.trim().toLowerCase() === normalized);
+  if (!skill) {
+    throw new ApiError("You cannot submit an assessment for a skill that is not on your profile.", 403, "SKILL_NOT_CLAIMED");
   }
+  const evidenceCount = (skill.evidenceCount ?? 0) + profile.evidence.filter((entry) => entry.skills.some((name) => name.toLowerCase() === normalized)).length;
+  const verificationStatus = verificationFor({ score: finalScore, integrityRisk: integrity.riskLevel, evidenceCount });
+  skill.assessmentScore = Math.max(skill.assessmentScore ?? 0, finalScore);
+  skill.status = verificationStatus;
+  skill.evidenceCount = evidenceCount;
+  skill.lastAssessmentAt = new Date();
   await profile.save();
   attempt.answers = new Map(Object.entries(acceptedAnswers));
   attempt.codingSubmission = input.codingSubmission.slice(0, 30000);

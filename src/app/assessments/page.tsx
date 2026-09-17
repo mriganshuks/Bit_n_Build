@@ -25,11 +25,16 @@ export default function AssessmentsPage() {
     setLoading(true);
     setError(null);
     try {
-      const body = await apiFetch<{ profile: Profile }>("/api/profile");
-      setProfile(body.profile);
+      const body = await apiFetch<{ skills: Skill[] }>("/api/assessments");
+      setProfile({ skills: body.skills });
     } catch (err) {
-      setProfile(null);
-      setError(err instanceof Error ? err.message : "Unable to load skills.");
+      try {
+        const fallback = await apiFetch<{ profile: Profile }>("/api/profile");
+        setProfile(fallback.profile);
+      } catch {
+        setProfile(null);
+        setError(err instanceof Error ? err.message : "Unable to load skills.");
+      }
     } finally {
       setLoading(false);
     }

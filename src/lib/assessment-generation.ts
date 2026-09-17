@@ -102,12 +102,17 @@ Rules:
       contents: prompt,
       config: { responseMimeType: "application/json", temperature: 0.75 },
     });
+    let timer: NodeJS.Timeout | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      const timer = setTimeout(() => reject(new Error("Gemini generation timed out after 12s")), timeoutMs);
-      generatePromise.finally(() => clearTimeout(timer));
+      timer = setTimeout(() => reject(new Error("Gemini generation timed out after 12s")), timeoutMs);
     });
 
-    const response = await Promise.race([generatePromise, timeoutPromise]);
+    let response;
+    try {
+      response = await Promise.race([generatePromise, timeoutPromise]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
 
     const parsed = generatedAssessmentSchema.parse(JSON.parse(response.text ?? "{}"));
     const questions = toQuestions(parsed.questions).filter(

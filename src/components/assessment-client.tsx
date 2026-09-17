@@ -133,9 +133,25 @@ export default function AssessmentClient({ skill }: Props) {
     }
   }
 
+  const [skillEligible, setSkillEligible] = useState<boolean | null>(null);
+
   useEffect(() => {
     if (authState !== "AUTHENTICATED") return;
     let isCancelled = false;
+
+    const checkEligibility = async () => {
+      try {
+        const body = await apiFetch<{ skills: Array<{ name: string; normalizedName?: string }> }>("/api/assessments");
+        if (isCancelled) return;
+        const norm = skill.trim().toLowerCase();
+        const found = (body.skills ?? []).some(
+          (s) => (s.normalizedName || s.name.trim().toLowerCase()) === norm
+        );
+        setSkillEligible(found);
+      } catch {
+        // Leave null on error; server-side validation is authoritative
+      }
+    };
 
     const resumeExisting = async () => {
       try {
@@ -167,6 +183,7 @@ export default function AssessmentClient({ skill }: Props) {
       }
     };
 
+    void checkEligibility();
     void resumeExisting();
     return () => {
       isCancelled = true;
@@ -279,6 +296,20 @@ export default function AssessmentClient({ skill }: Props) {
           <li>Answer keys and hidden test suites are strictly server-held</li>
           <li>Loss of focus, tab switching, and permission revocation generate integrity risk signals</li>
         </ul>
+        {skillEligible === false && (
+          <div className="mt-5 border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="font-semibold">Skill not claimed on your profile</p>
+            <p className="mt-1">
+              You must claim &apos;{skill}&apos; on your profile before you can start an assessment for it.
+            </p>
+            <Link
+              href="/skills"
+              className="mt-3 inline-flex h-9 items-center border border-amber-900 bg-amber-900 px-4 text-xs font-medium text-amber-50 hover:bg-amber-800"
+            >
+              Go to Skills &amp; Claim {skill}
+            </Link>
+          </div>
+        )}
         {error && (
           <div className="mt-5 border border-red-200 bg-red-50 p-4 text-sm text-red-800">
             <p className="font-semibold">Permission or Start Issue:</p>
@@ -287,7 +318,7 @@ export default function AssessmentClient({ skill }: Props) {
           </div>
         )}
         <div className="mt-6 flex gap-3">
-          <button type="button" disabled={starting} onClick={() => void start()} className="h-11 border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800 disabled:opacity-50">
+          <button type="button" disabled={starting || skillEligible === false} onClick={() => void start()} className="h-11 border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800 disabled:opacity-50">
             {starting ? "Requesting permission…" : "Allow permissions and start"}
           </button>
           <Link href="/assessments" className="inline-flex h-11 items-center border border-stone-400 px-5 text-sm text-stone-800 hover:bg-stone-100">

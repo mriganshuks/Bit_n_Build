@@ -113,7 +113,29 @@ export default function DashboardClient() {
     );
   }
 
-  // 2. Unauthenticated or no profile yet
+  // 2. Unauthenticated state
+  if (authState === "UNAUTHENTICATED") {
+    return (
+      <main className="mx-auto max-w-5xl px-6 py-12">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">
+          Dashboard
+        </p>
+        <h1 className="mt-3 text-3xl font-semibold text-stone-900">Sign in to access your dashboard</h1>
+        <p className="mt-3 max-w-xl text-sm leading-6 text-stone-600">
+          Sign in with Google to view your verified skills, track assessments, and coordinate with hackathon teams.
+        </p>
+        <button
+          type="button"
+          onClick={() => void signIn()}
+          className="mt-6 inline-flex h-10 items-center border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800"
+        >
+          Sign in with Google
+        </button>
+      </main>
+    );
+  }
+
+  // 3. Authenticated but profile not yet created (onboarding)
   if (!profile) {
     return (
       <main className="mx-auto max-w-5xl px-6 py-12">
@@ -122,7 +144,7 @@ export default function DashboardClient() {
         </p>
         <h1 className="mt-3 text-3xl font-semibold text-stone-900">Your profile comes first</h1>
         <p className="mt-3 max-w-xl text-sm leading-6 text-stone-600">
-          {error ?? "Create or link your PRAMAAN profile to view verified skills, assessments, and hackathon teams."}
+          {error ?? "Create your PRAMAAN profile to begin verifying skills, taking assessments, and joining hackathon teams."}
         </p>
         <div className="mt-6 flex flex-wrap gap-4">
           <Link
@@ -131,15 +153,6 @@ export default function DashboardClient() {
           >
             Create PRAMAAN profile
           </Link>
-          {!firebaseUser && (
-            <button
-              type="button"
-              onClick={() => void signIn()}
-              className="inline-flex h-10 items-center border border-stone-400 px-5 text-sm font-medium text-stone-800 hover:bg-stone-100"
-            >
-              Sign in with Google
-            </button>
-          )}
           {error && (
             <button
               type="button"

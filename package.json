@@ -10,6 +10,7 @@
     "test:mongodb": "node scripts/test-mongo.mjs",
     "test:integration": "node scripts/integration-check.mjs",
     "test:api": "node scripts/api-journey-check.mjs",
+    "test:isolation": "node scripts/test-two-user-isolation.mjs",
     "seed:dummy": "node scripts/seed-dummy-users.mjs",
     "cleanup:dummy": "node scripts/cleanup-dummy-users.mjs"
   },
