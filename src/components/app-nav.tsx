@@ -16,7 +16,7 @@ const authenticatedNavigation = [
 
 export default function AppNav() {
   const pathname = usePathname();
-  const { profile, firebaseUser, authState, loading, signIn, signOut } = useAuth();
+  const { profile, firebaseUser, authState, loading, signOut } = useAuth();
 
   const [signingOut, setSigningOut] = useState(false);
 
@@ -35,26 +35,8 @@ export default function AppNav() {
     }
   }
 
-  if (loading || authState === "LOADING") {
-    return (
-      <div className="flex items-center text-xs text-stone-400">
-        <span>Loading…</span>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="flex items-center">
-        <button
-          type="button"
-          onClick={() => void signIn()}
-          className="inline-flex h-8 items-center border border-stone-900 bg-stone-900 px-3 text-xs font-medium text-stone-50 hover:bg-stone-800 active:bg-stone-950 transition-colors focus-visible:ring-2 focus-visible:ring-stone-900"
-        >
-          Sign In
-        </button>
-      </div>
-    );
+  if (loading || authState === "LOADING" || !isAuthenticated) {
+    return null;
   }
 
   return (

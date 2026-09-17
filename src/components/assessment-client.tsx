@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { apiFetch } from "@/lib/api-client";
 import { canonicalSkillDisplay, normalizeSkillName } from "@/lib/skills";
@@ -14,7 +15,8 @@ type Props = { skill: string };
 const readable = (value: string) => value.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
 
 export default function AssessmentClient({ skill }: Props) {
-  const { authState } = useAuth();
+  const router = useRouter();
+  const { authState, loading: authLoading } = useAuth();
   const displaySkill = useMemo(() => canonicalSkillDisplay(skill), [skill]);
   const normalizedSkill = useMemo(() => normalizeSkillName(skill), [skill]);
   const [attempt, setAttempt] = useState<Attempt | null>(null);
@@ -234,6 +236,12 @@ export default function AssessmentClient({ skill }: Props) {
 
   useEffect(() => () => stopMedia(), []);
 
+  useEffect(() => {
+    if (!authLoading && authState === "UNAUTHENTICATED") {
+      router.replace("/login");
+    }
+  }, [authLoading, authState, router]);
+
   const time = useMemo(() => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`, [seconds]);
 
   if (authState === "LOADING") {
@@ -248,20 +256,7 @@ export default function AssessmentClient({ skill }: Props) {
   }
 
   if (authState === "UNAUTHENTICATED") {
-    return (
-      <main className="mx-auto w-full max-w-3xl px-6 py-10">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">Authentication Required</p>
-        <h1 className="mt-3 text-3xl font-semibold">Sign in to take assessment</h1>
-        <p className="mt-4 text-sm leading-6 text-stone-600">
-          You must be signed in with an active profile to access PRAMAAN skill assessments and record verified credentials.
-        </p>
-        <div className="mt-6">
-          <Link href="/dashboard" className="inline-flex h-11 items-center border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800">
-            Go to Dashboard &amp; Sign In
-          </Link>
-        </div>
-      </main>
-    );
+    return null;
   }
 
   if (result) {

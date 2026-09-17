@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { apiFetch } from "@/lib/api-client";
 
@@ -16,7 +17,8 @@ type Profile = {
 };
 
 export default function AssessmentsPage() {
-  const { authState, loading: authLoading, signIn } = useAuth();
+  const router = useRouter();
+  const { authState, loading: authLoading } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,33 +41,20 @@ export default function AssessmentsPage() {
   }, []);
 
   useEffect(() => {
+    if (!authLoading && authState === "UNAUTHENTICATED") {
+      router.replace("/login");
+    }
+  }, [authLoading, authState, router]);
+
+  useEffect(() => {
     if (authLoading || authState === "UNAUTHENTICATED") return;
     void Promise.resolve().then(() => load());
   }, [authLoading, authState, load]);
 
-  if (authLoading || (authState === "AUTHENTICATED" && loading && !profile)) {
+  if (authLoading || authState === "UNAUTHENTICATED" || (authState === "AUTHENTICATED" && loading && !profile)) {
     return (
       <main className="mx-auto max-w-5xl px-6 py-10 text-sm text-stone-600">
-        Loading assessments…
-      </main>
-    );
-  }
-
-  if (authState === "UNAUTHENTICATED") {
-    return (
-      <main className="mx-auto max-w-5xl px-6 py-12">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">Assessments</p>
-        <h1 className="mt-3 text-3xl font-semibold text-stone-900">Sign in to take assessments</h1>
-        <p className="mt-3 max-w-xl text-sm leading-6 text-stone-600">
-          Assessments verify your claimed technical capabilities through timed MCQs and code challenges tied to your verified identity.
-        </p>
-        <button
-          type="button"
-          onClick={() => void signIn()}
-          className="mt-6 inline-flex h-10 items-center border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800"
-        >
-          Sign in with Google
-        </button>
+        Loading…
       </main>
     );
   }

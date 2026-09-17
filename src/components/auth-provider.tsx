@@ -243,6 +243,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const sessionResult = await syncSessionWithServer(idToken);
       if (sessionResult?.isNewUser) {
         router.push("/onboarding");
+      } else {
+        router.push("/dashboard");
       }
     } catch (err) {
       console.error("Sign in failed:", err);
@@ -265,7 +267,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setFirebaseUser(null);
       setProfile(null);
       setAuthState("UNAUTHENTICATED");
-      router.push("/");
+      router.push("/login");
       router.refresh();
     } catch (err) {
       console.error("Sign out failed:", err);

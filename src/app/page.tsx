@@ -1,6 +1,29 @@
+"use client";
+
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/components/auth-provider";
 
 export default function Home() {
+  const router = useRouter();
+  const { authState, loading, profile, firebaseUser } = useAuth();
+
+  useEffect(() => {
+    if (loading) return;
+    const isAuthenticated =
+      authState === "AUTHENTICATED" || Boolean(profile) || Boolean(firebaseUser);
+    if (isAuthenticated) {
+      if (!profile) {
+        router.replace("/onboarding");
+      } else {
+        router.replace("/dashboard");
+      }
+    } else {
+      router.replace("/login");
+    }
+  }, [loading, authState, profile, firebaseUser, router]);
+
   return (
     <main className="mx-auto flex min-h-full w-full max-w-2xl flex-col px-6 py-16">
       <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">
@@ -16,16 +39,16 @@ export default function Home() {
       </p>
       <div className="mt-10 flex flex-wrap gap-3 border-t border-stone-300 pt-8">
         <Link
-          href="/onboarding"
+          href="/login"
           className="inline-flex h-11 items-center border border-stone-900 bg-stone-900 px-5 text-sm font-medium text-stone-50 hover:bg-stone-800"
         >
-          Create local profile
+          Sign in
         </Link>
         <Link
-          href="/assessments"
-          className="inline-flex h-11 items-center border border-stone-400 px-5 text-sm font-medium text-stone-800 hover:bg-stone-100"
+          href="/onboarding"
+          className="inline-flex h-11 items-center border border-stone-300 px-5 text-sm font-medium text-stone-800 hover:bg-stone-100"
         >
-          Explore assessments
+          Create local profile
         </Link>
       </div>
     </main>
