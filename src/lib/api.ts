@@ -9,7 +9,9 @@ export class ApiError extends Error {
 export function errorResponse(error: unknown) {
   if (error instanceof ApiError) return Response.json({ error: { code: error.code, message: error.message } }, { status: error.status });
   if (error instanceof ZodError) {
-    return Response.json({ error: { code: "VALIDATION_ERROR", message: "Please check the submitted details.", fields: error.flatten().fieldErrors } }, { status: 400 });
+    const fieldErrors = error.flatten().fieldErrors;
+    const firstErrorMessage = Object.values(fieldErrors).flat().find(Boolean) as string | undefined;
+    return Response.json({ error: { code: "VALIDATION_ERROR", message: firstErrorMessage || "Please check the submitted details.", fields: fieldErrors } }, { status: 400 });
   }
   console.error("Unhandled API error", error);
   return Response.json({ error: { code: "INTERNAL_ERROR", message: "Something went wrong. Please try again." } }, { status: 500 });

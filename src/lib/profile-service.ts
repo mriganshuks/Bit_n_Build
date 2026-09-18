@@ -5,12 +5,22 @@ import { ApiError, isDuplicateKeyError } from "@/lib/api";
 import { serializeProfile } from "@/lib/serializers";
 import { canonicalSkillDisplay, normalizeSkillName } from "@/lib/skills";
 
+import { getHandleValidationError } from "@/lib/handle-validation";
+
 const urlSchema = z.string().url().max(500);
 const skillName = z.string().trim().min(1).max(80);
 export const createProfileSchema = z.object({
   displayName: z.string().trim().min(2).max(80),
   email: z.string().trim().email().max(254),
-  handle: z.string().trim().toLowerCase().regex(/^[a-z0-9_]{3,32}$/, "Use 3–32 lowercase letters, numbers, or underscores."),
+  handle: z.string().superRefine((val, ctx) => {
+    const error = getHandleValidationError(val);
+    if (error) {
+      ctx.addIssue({
+        code: "custom",
+        message: error,
+      });
+    }
+  }),
   headline: z.string().trim().max(120).optional().default(""),
   location: z.string().trim().max(100).optional().default(""),
   firebaseUid: z.string().trim().optional(),
@@ -48,10 +58,28 @@ export async function createProfile(input: z.infer<typeof createProfileSchema>) 
       return serializeProfile(existingByEmail);
     }
 
-    const profile = await User.create({ ...input, skills: [], projects: [], evidence: [] });
+    const existingByHandle = await User.findOne({ handle: input.handle.toLowerCase() });
+    if (existingByHandle) {
+      throw new ApiError("This public handle is already taken. Try another one.", 409, "HANDLE_CONFLICT");
+    }
+
+    const profile = await User.create({
+      ...input,
+      handle: input.handle.toLowerCase(),
+      skills: [],
+      projects: [],
+      evidence: [],
+    });
     return serializeProfile(profile);
   } catch (error) {
-    if (isDuplicateKeyError(error)) throw new ApiError("That email or handle already belongs to a profile.", 409, "PROFILE_CONFLICT");
+    if (error instanceof ApiError) throw error;
+    if (isDuplicateKeyError(error)) {
+      const keyPattern = (error as { keyPattern?: Record<string, number> }).keyPattern;
+      if (keyPattern?.handle) {
+        throw new ApiError("This public handle is already taken. Try another one.", 409, "HANDLE_CONFLICT");
+      }
+      throw new ApiError("That email or handle already belongs to a profile.", 409, "PROFILE_CONFLICT");
+    }
     throw error;
   }
 }
